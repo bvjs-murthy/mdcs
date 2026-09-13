@@ -139,8 +139,7 @@ public class Login{
                 this.server,
                 this.stream,
                 this.state,
-                this.user,
-                this.device
+                this.user
             );
 
             reg.validateUsr();

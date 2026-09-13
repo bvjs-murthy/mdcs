@@ -14,7 +14,6 @@ import com.mdcs.core.Stream.Message;
 import com.mdcs.core.Stream.Response;
 import com.mdcs.shared.fileio.FileIO;
 import com.mdcs.shared.fileio.DataClasses.Accounts;
-import com.mdcs.shared.fileio.DataClasses.Device;
 import com.mdcs.shared.models.auth.Network.CreateUsrReq;
 import com.mdcs.shared.models.auth.Network.CreateUsrRes;
 import com.mdcs.shared.models.auth.Network.ValidateUsrReq;
@@ -65,7 +64,6 @@ public class Register{
     private Stream stream;
     private State state;
     private Accounts user;
-    private Device device;
     private Callbacks.Register callbacks;
 
     protected void validateUsr()
@@ -385,20 +383,17 @@ public class Register{
         this.state = state;
 
         this.user = new Accounts();
-        this.device = new Device();
     }
 
     public Register(
         ProtoMet server,
         Stream stream,
         State state,
-        Accounts user,
-        Device device
+        Accounts user
     ) throws InterruptedException, JsonProcessingException, ExecutionException{
         this.server = server;
         this.stream = stream;
         this.state = state;
         this.user = user;
-        this.device = device;
     }
 }
