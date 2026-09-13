@@ -114,9 +114,19 @@ class App {
 
         if (option.equals("genkey")) enr.genkey();
 
-        if (option.equals("additional"))
+        else if (option.equals("first")){
+
+            try { enr.first(); }
+            catch (Exception e) { return 16; }
+        }
+
+        else if (option.equals("additional")){
+
             try { enr.additional(); }
             catch (Exception e) { return 16; }
+        }
+
+        else return 2;
         
         if (state.get() == AuthState.TERMINATE) return 23;
 

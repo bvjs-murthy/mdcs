@@ -143,8 +143,8 @@ public class Version implements Runnable{
         }
     
         // Checking for other available updates
-        String avail[] = avail_ver.split("//.");
-        String curr[] = curr_ver.split("//.");
+        String avail[] = avail_ver.split("\\.");
+        String curr[] = curr_ver.split("\\.");
     
         if (
             Integer.parseInt(avail[0]) > Integer.parseInt(curr[0])
@@ -294,8 +294,8 @@ public class Version implements Runnable{
 
         if (!this.format()){
             // Stop application startup
-            
             this.report.setAppState(AppState.TERMINATE);
+            return;
         }
 
         this.metadata();

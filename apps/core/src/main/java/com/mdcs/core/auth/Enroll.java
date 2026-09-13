@@ -117,7 +117,7 @@ public class Enroll{
      * 
      * Populates the supplied Device instance with the enrolled device details.
      */
-    protected void first()
+    public void first()
     throws Exception{
         this.stream.send(
             new Message(
@@ -172,15 +172,17 @@ public class Enroll{
         this.getCallbacks(AuthAct.CHOICE_ENROLL);
 
         switch (this.callbacks.choice().toLowerCase()){
-            case "first": this.first();
+            case "first" -> this.first();
                 
-            case "additional": this.additional();
+            case "additional" -> this.additional();
             
-            default: throw new IllegalStateException("Invalid enrollment choice.");
+            default -> throw new IllegalStateException("Invalid enrollment choice.");
         }
     }
 
-    public void genkey(){}
+    public void genkey(){
+        // WIP
+    }
     
     public Enroll(ProtoMet server, State state, Stream stream){
         this.server = server;
