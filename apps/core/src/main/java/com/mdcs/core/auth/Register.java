@@ -35,7 +35,7 @@ import com.mdcs.shared.utils.NetErrors;
  * - First device enrollment
  */
 
-public class Register implements Runnable{
+public class Register{
 
     /*
     What if user creation and validation succeeded but first device enrollment failed? User won't
@@ -68,10 +68,6 @@ public class Register implements Runnable{
     private Device device;
     private Callbacks.Register callbacks;
 
-    /**
-     * Validate user account with OTP and set the user as verified after successful validation.
-     * Assumes account has been created previously (ofcourse bro)
-     */
     protected void validateUsr()
     throws IOException, InterruptedException, ExecutionException{
         this.stream.send(
@@ -270,7 +266,6 @@ public class Register implements Runnable{
         }
     }
 
-    @Override
     public void run(){
         this.stream.send(
             new Message(
@@ -289,7 +284,7 @@ public class Register implements Runnable{
                 this.validateUsr();
 
             if (this.state.get() == AuthState.SUCCESS)
-                this.device = enroll.first();
+                enroll.first();
 
             if (this.state.get() == AuthState.RECOVER)
                 this.user.logged_in = false;
@@ -345,11 +340,20 @@ public class Register implements Runnable{
             );
 
             this.state.set(AuthState.TERMINATE);
+        } catch (Exception e) {
+
+            this.stream.send(
+                new Message(
+                    LogAct.ERROR, null,
+                    "Failed to save device information\n"
+                )
+            );
+
+            this.state.set(AuthState.TERMINATE);
         } finally{
             
             try {
                 FileIO.fileWrite(this.user);
-                FileIO.fileWrite(this.device);
             } catch (Exception e) {
                 /*
                 User is signed in but we can't persist the data for the next time. In such cases,
@@ -374,8 +378,8 @@ public class Register implements Runnable{
     not worry about creating objects locally (-_-)
     */
     
-    public Register(ProtoMet server, Stream stream, State state) throws
-    InterruptedException, JsonProcessingException, ExecutionException{
+    public Register(ProtoMet server, Stream stream, State state)
+    throws InterruptedException, JsonProcessingException, ExecutionException{
         this.server = server;
         this.stream = stream;
         this.state = state;

@@ -1,6 +1,5 @@
 package com.mdcs.core.auth;
 
-import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -20,7 +19,7 @@ import com.mdcs.shared.models.auth.Network.LoginReq;
 import com.mdcs.shared.models.auth.Network.LoginRes;
 import com.mdcs.shared.network.ProtoMet;
 
-public class Login implements Runnable{
+public class Login{
     private ProtoMet server;
     private Stream stream;
     private Callbacks.Login callbacks;
@@ -64,7 +63,7 @@ public class Login implements Runnable{
     }
 
     private void usrAuth()
-    throws IOException, InterruptedException, ExecutionException{
+    throws Exception{
         this.user.email = this.callbacks.email();
         String pswd = this.callbacks.pswd();
 
@@ -178,7 +177,6 @@ public class Login implements Runnable{
         );
     }
 
-    @Override
     public void run(){
         this.stream.send(
             new Message(LogAct.INFO, null, "Initiating login workflow...\n")
@@ -187,17 +185,12 @@ public class Login implements Runnable{
         this.getCallbacks();
 
         try { this.usrAuth(); }
-        catch (IOException e) {
-            // Will decide what to do later
-        } catch (InterruptedException e) {
-            // Will decide what to do later
-        } catch (ExecutionException e) {
-            // Will decide what to do later
+        catch (Exception e){
+            e.printStackTrace();
         } finally{
             
             try {
                 FileIO.fileWrite(this.user);
-                FileIO.fileWrite(this.device);
             } catch (Exception e) {
                 /*
                 User is signed in but we can't persist the data for the next time. In such cases,
@@ -216,17 +209,16 @@ public class Login implements Runnable{
         }
     }
     
-    public Login(ProtoMet server, Stream stream, State state, Callbacks.Login callbacks){
+    public Login(ProtoMet server, Stream stream, State state){
         this.server = server;
         this.stream = stream;
         this.state = state;
-        this.callbacks = callbacks;
 
-        /*
-        User data is overwritten in absolutely every scenario of login. Because, we can't say
-        whether the user intends to login to another account or is logging in because of expired
-        auth tokens.
-        */
+        /**
+         * User data is overwritten in absolutely every scenario of login. Because, we can't say
+         * whether the user intends to login to another account or is logging in because of expired
+         * auth tokens.
+         */
         this.user = new Accounts();
 
         /**

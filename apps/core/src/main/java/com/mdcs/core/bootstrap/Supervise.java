@@ -21,7 +21,7 @@ It may be noted that user state resolution phase is executed after the remaining
 bootstrap. It is called independently by the master and not as a parallel worker.
 */
 
-public class Supervise implements Runnable{
+public class Supervise{
 
     /*
     Processes like schema validation, version validation are independent of each other and thus 
@@ -34,10 +34,17 @@ public class Supervise implements Runnable{
     private ProtoMet server;
     private Properties vers;
     private Stream stream;
-    private Report report;
+    public Report report;
 
-    @Override
     public void run(){
+        this.stream.send(
+            new Message(
+                LogAct.INFO, 
+                null, 
+                "Initiating application bootstrap.\n"
+            )
+        );
+
         Schema schema = new Schema(this.stream, this.report);
         Thread sch_worker = new Thread(schema);
         sch_worker.setDaemon(true);
@@ -83,11 +90,10 @@ public class Supervise implements Runnable{
             );
     }
 
-    public Supervise(ProtoMet server, Properties vers, Stream stream){
+    public Supervise(ProtoMet server, Properties vers, Stream stream, Report report){
         this.server = server;
         this.vers = vers;
         this.stream = stream;
-        
-        this.report = new Report();
+        this.report = report;
     }
 }

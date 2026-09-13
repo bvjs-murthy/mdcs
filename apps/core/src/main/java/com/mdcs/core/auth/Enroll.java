@@ -1,6 +1,5 @@
 package com.mdcs.core.auth;
 
-import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -65,8 +64,8 @@ public class Enroll{
         }
     }
 
-    private Device enroll(Request<?> msg, String log)
-    throws IOException, InterruptedException{
+    private void enroll(Request<?> msg, String log)
+    throws Exception{
         HttpResponse<String> res = this.server.post(msg);
 
         if (res.statusCode() >= 500){
@@ -84,7 +83,7 @@ public class Enroll{
 
             this.state.set(AuthState.RECOVER);
 
-            return device;
+            return;
         }
 
         EnrollRes payload = FileIO.toObject(res.body().toString(), EnrollRes.class);
@@ -101,7 +100,7 @@ public class Enroll{
             
             this.state.set(AuthState.RETRY);
 
-            return this.device;
+            return;
         }
 
         this.device.device_id = payload.body.device_id;
@@ -109,7 +108,7 @@ public class Enroll{
 
         this.stream.send(new Message(LogAct.INFO, null, log));
         
-        return this.device;
+        FileIO.fileWrite(this.device);
     }
 
     /**
@@ -118,8 +117,8 @@ public class Enroll{
      * 
      * Populates the supplied Device instance with the enrolled device details.
      */
-    protected Device first()
-    throws IOException, InterruptedException{
+    protected void first()
+    throws Exception{
         this.stream.send(
             new Message(
                 LogAct.INFO, null,
@@ -135,7 +134,7 @@ public class Enroll{
         EnrollFirReq msg = new EnrollFirReq();
         msg.body = new EnrollFirReq.Body(this.device.device_name, this.device.workspace_name);
 
-        return this.enroll(msg, "Device enrolled successfully and marked as primary.\n");
+        this.enroll(msg, "Device enrolled successfully and marked as primary.\n");
     }
 
     /**
@@ -144,8 +143,8 @@ public class Enroll{
      * 
      * Generally process() will provoke this.
      */
-    protected Device additional()
-    throws IOException, InterruptedException{
+    public void additional()
+    throws Exception{
         this.stream.send(
             new Message(
                 LogAct.INFO, null,
@@ -165,27 +164,41 @@ public class Enroll{
             this.callbacks.pairingKey()
         );
         
-        return this.enroll(msg, "Device enrolled successfully under the workspace.\n");
+        this.enroll(msg, "Device enrolled successfully under the workspace.\n");
     }
 
-    protected Device process()
-    throws IOException, InterruptedException, IllegalStateException{
+    protected void process()
+    throws Exception{
         this.getCallbacks(AuthAct.CHOICE_ENROLL);
 
-        switch (this.callbacks.choice()){
-            case "FIRST": return this.first();
+        switch (this.callbacks.choice().toLowerCase()){
+            case "first": this.first();
                 
-            case "ADDITIONAL": return this.additional();
+            case "additional": this.additional();
             
             default: throw new IllegalStateException("Invalid enrollment choice.");
         }
     }
+
+    public void genkey(){}
     
     public Enroll(ProtoMet server, State state, Stream stream){
         this.server = server;
         this.state = state;
         this.stream = stream;
 
-        this.device = new Device();
+        /**
+         * For device data, read the file first and if the file doesn't exist or throwing some error
+         * (which ususally don't happen because of bootstrap process) then default the objects.
+         * 
+         * This helps us in two cases. If device is enrolled for the account user is trying to log
+         * into, we can skip device enrollment and if device id is absent or is not associated with
+         * the account, we will trigger the enrollment process.
+        */
+        try{
+            this.device = FileIO.fileRead(Device.class);
+        } catch (Exception e){
+            this.device = new Device();
+        }
     }
 }
