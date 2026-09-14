@@ -55,7 +55,7 @@ public class FileIO{
 
     // For writing from generics
     public static <T extends DataClasses.HasPath> void createAndWrite(Class<T> file)
-    throws Exception{
+    throws ReflectiveOperationException, IOException{
         T obj = file.getDeclaredConstructor().newInstance();
         fileWrite(obj);
     }
@@ -63,7 +63,7 @@ public class FileIO{
     // For writing files from objects
     // Required object properties: file.path (expected to exist)
     public static <T extends DataClasses.HasPath> void fileWrite(T file)
-    throws Exception{
+    throws IOException{
         String path = file.getPath();
         mapper.writeValue(new File(path), file);
     }

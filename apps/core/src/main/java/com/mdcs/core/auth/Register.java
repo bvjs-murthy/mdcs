@@ -87,7 +87,9 @@ public class Register{
             otp
         );
 
-        HttpResponse<String> res = this.server.post(message);
+        HttpResponse<String> res;
+        try { res = this.server.post(message); }
+        catch (IOException e) { throw new IOException("Failed to contact server.\n"); }
 
         if (res.statusCode() >= 500){
             // Some internal server error has occured. Return recovery code because, need to
@@ -105,10 +107,15 @@ public class Register{
             return;
         }
 
-        ValidateUsrRes payload = FileIO.toObject(
-            res.body().toString(),
-            ValidateUsrRes.class
-        );
+        ValidateUsrRes payload;
+        try {
+            payload = FileIO.toObject(
+                res.body().toString(),
+                ValidateUsrRes.class
+            );
+        } catch (JsonProcessingException e) {
+            throw new IOException("Faile to parse response object.\n");
+        }
 
         /*
         If the OTP is incorrect, need to let the user try again. Current sequence discards the
@@ -149,12 +156,9 @@ public class Register{
      * 
      * In cases of business failures or internal server errors, the OTP is not sent, so it is fine
      * to neglect that case.
-     * 
-     * @throws IOException
-     * @throws InterruptedException
      */
     private void createUsr()
-    throws IOException, InterruptedException{
+    throws InterruptedException, IOException{
         this.stream.send(
             new Message(
                 LogAct.INFO, null,
@@ -174,7 +178,12 @@ public class Register{
             password
         );
 
-        HttpResponse<String> res = this.server.post(message);
+        HttpResponse<String> res;
+        try {
+            res = this.server.post(message);
+        } catch (IOException e) {
+            throw new IOException("Failed to contact server.\n");
+        }
 
         if (res.statusCode() >= 500){
             /*
@@ -229,7 +238,8 @@ public class Register{
         );
     }
 
-    private void getCallbacks(){
+    private void getCallbacks()
+    throws IOException{
         this.stream.send(
             new Message(
                 LogAct.INFO, null,
@@ -243,25 +253,26 @@ public class Register{
             promise = this.stream.request(
                 new Message(AuthAct.REGISTER, null, "")
             );
-
+            
             this.callbacks = FileIO.toObject(
                 promise.get().getPayload(),
                 Callbacks.Register.class
             );
+        } catch (JsonProcessingException | InterruptedException | ExecutionException e) {
+            /**
+             * Both the actions are merged into single error handling because, they all somehow
+             * say, failed to get the required data.
+             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.INFO, null,
-                    "Received account information successfully.\n"
-                )
-            );
-        } catch (InterruptedException e) {
-            // Will decide what to do later
-        } catch (JsonProcessingException e) {
-            // Will decide what to do later
-        } catch (ExecutionException e) {
-            // Will decide what to do later
+            throw new IOException("Failed to request/fetch registration data.\n");
         }
+
+        this.stream.send(
+            new Message(
+                LogAct.INFO, null,
+                "Received account information successfully.\n"
+            )
+        );
     }
 
     public void run(){
@@ -270,10 +281,9 @@ public class Register{
                 LogAct.INFO, null, "Initializing registration workflow...\n"
             )
         );
-
-        this.getCallbacks();
         
         try{
+            this.getCallbacks();
             Enroll enroll = new Enroll(this.server, this.state, this.stream);
 
             this.createUsr();
@@ -291,23 +301,7 @@ public class Register{
                 this.user.logged_in = true;
 
         } catch (IOException e){
-            /*
-            This means, server couldn't be contacted. This can cause due to:
-                No internet connection
-                Connection timed out
-                DNS lookup failed
-                etc.
-
-            In such cases, send the termination code.
-            */
-
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR, null,
-                    "Failed to contact the server <" + e.getMessage() + ">\n"
-                )
-            );
-            
+            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
             this.state.set(AuthState.TERMINATE);
         } catch (InterruptedException e){
             /*
@@ -390,7 +384,7 @@ public class Register{
         Stream stream,
         State state,
         Accounts user
-    ) throws InterruptedException, JsonProcessingException, ExecutionException{
+    ){
         this.server = server;
         this.stream = stream;
         this.state = state;

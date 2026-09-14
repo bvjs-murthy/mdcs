@@ -41,7 +41,7 @@ public class Supervise{
             new Message(
                 LogAct.INFO, 
                 null, 
-                "Initiating application bootstrap.\n"
+                "Initiating application bootstrap...\n"
             )
         );
 

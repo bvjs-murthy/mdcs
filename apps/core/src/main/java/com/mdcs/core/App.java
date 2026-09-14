@@ -117,13 +117,13 @@ class App {
         else if (option.equals("first")){
 
             try { enr.first(); }
-            catch (Exception e) { return 16; }
+            catch (InterruptedException e) { return 11; }
         }
 
         else if (option.equals("additional")){
 
             try { enr.additional(); }
-            catch (Exception e) { return 16; }
+            catch (InterruptedException e) { return 11; }
         }
 
         else return 2;
@@ -215,8 +215,12 @@ class App {
             this.APP = this.config("application.properties");
             this.VER = this.config("versions.properties");
         } catch (Exception e){
-            // Will decide what to do later.
-            e.printStackTrace();
+            /**
+             * If the application.properties or versions.properties file is not found, then the
+             * application cannot proceed further reliably.
+             */
+
+            System.exit(4);
         }
 
         this.server = new ProtoMet(this.APP);

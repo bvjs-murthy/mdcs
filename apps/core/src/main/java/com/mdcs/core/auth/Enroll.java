@@ -1,5 +1,6 @@
 package com.mdcs.core.auth;
 
+import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -31,7 +32,8 @@ public class Enroll{
     private Stream stream;
     private Callbacks.Enroll callbacks;
 
-    private void getCallbacks(AuthAct action){
+    private void getCallbacks(AuthAct action)
+    throws IOException{
         this.stream.send(
             new Message(
                 LogAct.INFO, null,
@@ -43,30 +45,31 @@ public class Enroll{
 
         try {
             promise = this.stream.request(new Message(action, null, ""));
-
+            
             this.callbacks = FileIO.toObject(
                 promise.get().getPayload(),
                 Callbacks.Enroll.class
             );
-
-            this.stream.send(
-                new Message(
-                    LogAct.INFO, null,
-                    "Received device & workspace information successfully.\n"
-                )
-            );
-        } catch (InterruptedException e) {
-            // Will decide what to do later
-        } catch (JsonProcessingException e) {
-            // Will decide what to do later
-        } catch (ExecutionException e) {
-            // Will decide what to do later
+        } catch (JsonProcessingException | InterruptedException | ExecutionException e) {
+            throw new IOException("Failed to request/fetch enrollment data.\n");
         }
+
+        this.stream.send(
+            new Message(
+                LogAct.INFO, null,
+                "Received device & workspace information successfully.\n"
+            )
+        );
     }
 
     private void enroll(Request<?> msg, String log)
-    throws Exception{
-        HttpResponse<String> res = this.server.post(msg);
+    throws InterruptedException, IOException{
+        HttpResponse<String> res;
+        
+        try { res = this.server.post(msg); }
+        catch (IOException e) {
+            throw new IOException("Failed to contact server.\n");
+        }
 
         if (res.statusCode() >= 500){
             /*
@@ -118,7 +121,7 @@ public class Enroll{
      * Populates the supplied Device instance with the enrolled device details.
      */
     public void first()
-    throws Exception{
+    throws InterruptedException{
         this.stream.send(
             new Message(
                 LogAct.INFO, null,
@@ -126,7 +129,13 @@ public class Enroll{
             )
         );
 
-        this.getCallbacks(AuthAct.FIR_ENROLL);
+        try { this.getCallbacks(AuthAct.FIR_ENROLL); }
+        catch (IOException e) {
+            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.state.set(AuthState.TERMINATE);
+
+            return;
+        }
 
         this.device.device_name = this.callbacks.deviceName();
         this.device.workspace_name = this.callbacks.workspaceName();
@@ -134,7 +143,14 @@ public class Enroll{
         EnrollFirReq msg = new EnrollFirReq();
         msg.body = new EnrollFirReq.Body(this.device.device_name, this.device.workspace_name);
 
-        this.enroll(msg, "Device enrolled successfully and marked as primary.\n");
+        try {
+            this.enroll(msg, "Device enrolled successfully and marked as primary.\n");
+        } catch (IOException e) {
+            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.state.set(AuthState.TERMINATE);
+            
+            return;
+        }
     }
 
     /**
@@ -144,7 +160,7 @@ public class Enroll{
      * Generally process() will provoke this.
      */
     public void additional()
-    throws Exception{
+    throws InterruptedException{
         this.stream.send(
             new Message(
                 LogAct.INFO, null,
@@ -152,7 +168,14 @@ public class Enroll{
             )
         );
 
-        this.getCallbacks(AuthAct.ADD_ENROLL);
+        try {
+            this.getCallbacks(AuthAct.ADD_ENROLL);
+        } catch (IOException e) {
+            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.state.set(AuthState.TERMINATE);
+
+            return;
+        }
 
         this.device.device_name = this.callbacks.deviceName();
         this.device.workspace_name = this.callbacks.workspaceName();
@@ -164,12 +187,18 @@ public class Enroll{
             this.callbacks.pairingKey()
         );
         
-        this.enroll(msg, "Device enrolled successfully under the workspace.\n");
+        try {
+            this.enroll(msg, "Device enrolled successfully under the workspace.\n");
+        } catch (IOException e) {
+            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.state.set(AuthState.TERMINATE);
+            
+            return;
+        }
     }
 
     protected void process()
-    throws Exception{
-        this.getCallbacks(AuthAct.CHOICE_ENROLL);
+    throws InterruptedException{
 
         switch (this.callbacks.choice().toLowerCase()){
             case "first" -> this.first();

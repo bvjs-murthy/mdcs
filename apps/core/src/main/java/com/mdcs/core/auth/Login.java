@@ -1,5 +1,6 @@
 package com.mdcs.core.auth;
 
+import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -27,7 +28,8 @@ public class Login{
     private Accounts user;
     private Device device;
 
-    private void getCallbacks(){
+    private void getCallbacks()
+    throws IOException{
         this.stream.send(
             new Message(
                 LogAct.INFO, null,
@@ -46,24 +48,20 @@ public class Login{
                 promise.get().getPayload(),
                 Callbacks.Login.class
             );
-
-            this.stream.send(
-                new Message(
-                    LogAct.INFO, null,
-                    "Received account information successfully.\n"
-                )
-            );
-        } catch (InterruptedException e) {
-            // Will decide what to do later
-        } catch (JsonProcessingException e) {
-            // Will decide what to do later
-        } catch (ExecutionException e) {
-            // Will decide what to do later
+        } catch (JsonProcessingException | InterruptedException | ExecutionException e){
+            throw new IOException("Failed to request/fetch login data.\n");
         }
+
+        this.stream.send(
+            new Message(
+                LogAct.INFO, null,
+                "Received account information successfully.\n"
+            )
+        );
     }
 
     private void usrAuth()
-    throws Exception{
+    throws IOException, InterruptedException, ExecutionException{
         this.user.email = this.callbacks.email();
         String pswd = this.callbacks.pswd();
 
@@ -76,7 +74,10 @@ public class Login{
             this.device.device_id
         );
 
-        HttpResponse<String> res = this.server.post(message);
+        HttpResponse<String> res;
+
+        try{ res = this.server.post(message); }
+        catch (IOException e){ throw new IOException("Failed to contact server.\n"); }
 
         if (res.statusCode() >= 500){
             /*
@@ -96,7 +97,12 @@ public class Login{
             return;
         }
 
-        LoginRes payload = FileIO.toObject(res.body().toString(), LoginRes.class);
+        LoginRes payload;
+
+        try{ payload = FileIO.toObject(res.body().toString(), LoginRes.class); }
+        catch (IOException e){
+            throw new IOException("Failed to parse response object.\n");
+        }
 
         if (!payload.status){
             /*
@@ -181,16 +187,37 @@ public class Login{
             new Message(LogAct.INFO, null, "Initiating login workflow...\n")
         );
 
-        this.getCallbacks();
+        try {
+            this.getCallbacks();
+            this.usrAuth();
+        }
+        catch (IOException e){
+            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.state.set(AuthState.TERMINATE);
+        } catch (InterruptedException e){
 
-        try { this.usrAuth(); }
-        catch (Exception e){
-            e.printStackTrace();
+            this.stream.send(
+                new Message(
+                    LogAct.ERROR, null,
+                    "Thread was interrupted while performing user validation\n"
+                )
+            );
+
+            this.state.set(AuthState.TERMINATE);
+        } catch (ExecutionException e){
+
+            this.stream.send(
+                new Message(
+                    LogAct.ERROR, null,
+                    "User validation failed after failure to obtain OTP.\n"
+                )
+            );
+
+            this.state.set(AuthState.TERMINATE);
         } finally{
             
-            try {
-                FileIO.fileWrite(this.user);
-            } catch (Exception e) {
+            try { FileIO.fileWrite(this.user); }
+            catch (IOException e){
                 /*
                 User is signed in but we can't persist the data for the next time. In such cases,
                 treat user as signed in temporarily and ask for log in next time.
