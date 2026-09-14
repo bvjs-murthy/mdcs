@@ -35,7 +35,7 @@ Also:
     - Else mark as corrupted
 
 ### Phase 5: Configuration Initialization
-> Will b done added for `GUI`
+> Will b added for `GUI`
 - If Configs.json missing:
     - Create with defaults
 - If present:

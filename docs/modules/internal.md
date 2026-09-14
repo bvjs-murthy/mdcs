@@ -1,5 +1,4 @@
 # Internal Modules (Dependencies)
-
 These modules will be automatically downloaded when user installs the application. These are
 vitals for operation of the application.
 

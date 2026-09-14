@@ -13,8 +13,8 @@ Allows users to remotely open applications on connected devices instantly or sch
 execution.
 
 ## Process Scheduling
-Provides the ability to schedule (periodically) the execution of tasks across devices in a 
-controlled and sequential manner.
+Provides the ability to schedule the execution of tasks across devices in a  controlled and 
+sequential manner.
 
 ## Protocols
 Framework for enabling/disabling system-level behaviors and security mechanisms.

@@ -13,9 +13,9 @@ architecture.
 #### Currently Used
 - Java
 - Go
-- Python
 
 #### Planned
+- Python
 - C/C++
 
 ### Networking:
@@ -29,8 +29,8 @@ architecture.
 > Setup instructions will be added as the project evolves.
 
 ## Current Status
-- Initial development phase
-- Core system under active development
+- Core system stabilized and under maintanence
+- Planning for `Phase 2`
 
 ## Use Cases
 MDCS is designed for users who want to improve productivity by managing and automating tasks across
@@ -57,6 +57,7 @@ multiple devices.
 - [App Bootstrap](docs/system-design/app-bootstrap.md)
 - [Authentication System](docs/system-design/auth-system.md)
 - [State Storage](docs/system-design/state-store.md)
+- [Standards](docs/system-design/standards.md)
 
 ### Development
 - [Build Commands](docs/development/build-commands.md)
@@ -64,10 +65,10 @@ multiple devices.
 ## Development Roadmap
 Will be updated as needed as project evolves
 
-### Phase 1
+### Phase 1 (Almost completed with some balance changes)
 Core module (bootstrap, auth and inter-process communication)
 
-### Phase 2
+### Phase 2 (In planning stage)
 Services (Host, Client)
 
 ### Phase 3
