@@ -57,7 +57,7 @@ class App {
     private Properties APP, VER;
     private Report report;
 
-    private Properties config(String filename)
+    private static Properties config(String filename)
     throws IOException{
         Properties property = new Properties();
 
@@ -212,8 +212,8 @@ class App {
         this.report = new Report();
         
         try{
-            this.APP = this.config("application.properties");
-            this.VER = this.config("versions.properties");
+            this.APP = config("application.properties");
+            this.VER = config("versions.properties");
         } catch (Exception e){
             /**
              * If the application.properties or versions.properties file is not found, then the

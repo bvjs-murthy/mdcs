@@ -52,7 +52,7 @@ public class DataClasses{
             this.email = details[2];
             this.auth_token = details[3];
             this.refresh_token = details[4];
-            this.logged_in = details[5] == "true";
+            this.logged_in = details[5].equals("true");
         }
 
         public Accounts(){}

@@ -294,11 +294,10 @@ public class Register{
             if (this.state.get() == AuthState.SUCCESS)
                 enroll.first();
 
-            if (this.state.get() == AuthState.RECOVER)
-                this.user.logged_in = false;
-
-            else
+            if (this.state.get() == AuthState.SUCCESS)
                 this.user.logged_in = true;
+
+            else this.user.logged_in = false;
 
         } catch (IOException e){
             this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));

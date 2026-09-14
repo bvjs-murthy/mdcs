@@ -70,10 +70,10 @@ func SendOtp(user_id, email string) error {
 	_, err = data.Pool.Exec(
 		context.Background(),
 		`INSERT INTO otp
-			(user_id, otp)
+			(user_id, otp, sent_at)
 			
 		VALUES
-			($1, $2)`,
+			($1, $2, NOW())`,
 		user_id,
 		string(otp_hash),
 	)
@@ -88,7 +88,7 @@ func SendOtp(user_id, email string) error {
 					context.Background(),
 					`
 					UPDATE otp
-					SET otp = $1, sent = NOW()
+					SET otp = $1, sent_at = NOW()
 						
 					WHERE user_id = $2
 					`,
@@ -118,6 +118,10 @@ func GenRefreshTok(uid string) (string, error) {
 	key := make([]byte, 32)
 	_, err := rand.Read(key)
 
+	if err != nil {
+		return "", err
+	}
+
 	token := base64.URLEncoding.EncodeToString(key)
 	hashed, err := bcrypt.GenerateFromPassword(
 		[]byte(token),
@@ -132,10 +136,10 @@ func GenRefreshTok(uid string) (string, error) {
 		context.Background(),
 		`
 		INSERT INTO auth_tokens
-			(user_id, token)
+			(user_id, token, created_at)
 
 		VALUES
-			($1, $2)
+			($1, $2, NOW())
 		`,
 		uid,
 		string(hashed),

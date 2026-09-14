@@ -152,6 +152,8 @@ func login(res http.ResponseWriter, req *http.Request) {
 		}
 
 		res.Write(payload)
+
+		return
 	}
 
 	auth_tok, refresh_tok, err := getAccessTokens(user_id)

@@ -298,12 +298,12 @@ public class Stream {
             try {                
                 while (true) {
                     // <ID> <STATUS> <STATUS_CODE>
-                    String statusline = readLine(); //
+                    String statusline = readLine();
                     String[] status = statusline.split(" ", 3);
 
                     // [Header-Count]
                     int header_count = Integer.parseInt(
-                        readLine() //
+                        readLine()
                             .replace("[", "")
                             .replace("]", "")
                     );
@@ -312,11 +312,11 @@ public class Stream {
                     Map<String, String> headers = new HashMap<>();
 
                     for (int i = 0; i < header_count; i++) {
-                        String header = readLine(); //
+                        String header = readLine();
                         int separator = header.indexOf(':');
 
                         if (separator == -1)
-                            throw new IOException("Invalid header: " + header); //
+                            throw new IOException("Invalid header: " + header);
 
                         String key = header.substring(0, separator).trim();
                         String value = header.substring(separator + 1).trim();
@@ -325,13 +325,13 @@ public class Stream {
                     }
 
                     // [Length]<Payload>
-                    String lenline = readLine(); //
+                    String lenline = readLine();
 
                     int length = Integer.parseInt(
                         lenline.substring(1, lenline.indexOf(']'))
                     );
 
-                    String payload = readBytes(length); //
+                    String payload = readBytes(length);
 
                     Response res = new Response(
                         Integer.parseInt(status[0]),

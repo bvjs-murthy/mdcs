@@ -132,7 +132,7 @@ public class Network {
         }
 
         public LoginReq(){
-            this.endpoint = "auth/user/login";
+            this.endpoint = "/auth/user/login";
             this.addHeader("Content-type", "application/json");
         }
     }

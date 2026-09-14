@@ -58,14 +58,15 @@ func createUsr(usr CreateUsrReq) (string, error) {
 	)
 
 	if err != nil {
-		var pg_err *pgconn.PgError
 
-		if errors.As(err, &pg_err) {
+		if pg_err, ok := errors.AsType[*pgconn.PgError](err); ok {
 
 			if pg_err.Code == "23505" {
 				return "", errors.New("DUPLICATE_USER")
 			}
 		}
+
+		return "", err
 	}
 
 	err = auth.SendOtp(usr_id, usr.Email)
@@ -74,7 +75,7 @@ func createUsr(usr CreateUsrReq) (string, error) {
 		return "", errors.New("OTP_VER_FAIL")
 	}
 
-	return usr_id, nil
+	return usr_id, errors.New("DB_ERROR")
 }
 
 /*
@@ -129,6 +130,10 @@ func verifyOtp(usr ValidateUsrReq) error {
 		`,
 		usr.UserId,
 	)
+
+	if err != nil {
+		return errors.New("DB_ERROR")
+	}
 
 	_, err = data.Pool.Exec(
 		context.Background(),
@@ -241,7 +246,7 @@ func firstEnroll(enr EnrollFirReq) (string, string, error) {
 		UPDATE users
 		SET phase = $1
 		
-		WHERE id = $2
+		WHERE user_id = $2
 		`,
 		"ONBOARDED",
 		enr.UserId,
