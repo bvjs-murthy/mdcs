@@ -74,6 +74,36 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class Stream {
     private BlockingDeque<Message> oque;
     private ConcurrentHashMap<Integer, CompletableFuture<Response>> promises;
+    private IPC ipc;
+    
+    private static class IPC{
+        private BlockingDeque<Message> oque;
+        private ConcurrentHashMap<Integer, CompletableFuture<Response>> promises;
+        private volatile boolean connected = true;
+
+        private void fail(){
+
+            if (!this.connected) return;
+
+            this.connected = false;
+
+            for (CompletableFuture<Response> promise : this.promises.values())
+                promise.completeExceptionally(new IOException("IPC connection failed"));
+
+            this.promises.clear();
+            this.oque.clear();
+        }
+
+        private boolean status(){ return this.connected; }
+
+        private IPC(
+            BlockingDeque<Message> oque,
+            ConcurrentHashMap<Integer, CompletableFuture<Response>> promises
+        ){
+            this.oque = oque;
+            this.promises = promises;
+        }
+    }
 
     /**
      * Services exposed by the Manager/Core over the IPC protocol.
@@ -85,9 +115,7 @@ public class Stream {
      * and deserializes the messages.
      */
     public enum Service{
-        AUTH,
-        LOG,
-        UPDATE,
+        AUTH, LOG, UPDATE
     }
 
     /**
@@ -97,33 +125,21 @@ public class Stream {
     public interface Action{ Service service(); }
 
     public enum AuthAct implements Action{
-        LOGIN,
-        REGISTER,
-        AUTH_CHOICE,
-        FIR_ENROLL,
-        ADD_ENROLL,
-        CHOICE_ENROLL,
-        OTP,
-        RETRY;
+        LOGIN, REGISTER, AUTH_CHOICE, FIR_ENROLL, ADD_ENROLL, CHOICE_ENROLL, OTP, RETRY;
 
         @Override
         public Service service(){ return Service.AUTH; }
     }
 
     public enum LogAct implements Action{
-        INFO,
-        WARN,
-        ERROR,
-        CRITICAL;
+        INFO, WARN, ERROR, CRITICAL;
 
         @Override
         public Service service(){ return Service.LOG; }
     }
 
     public enum UpdateAct implements Action{
-        CRITICAL,
-        OPTIONAL,
-        PLUGIN;
+        CRITICAL, OPTIONAL, PLUGIN;
 
         @Override
         public Service service(){ return Service.UPDATE; }
@@ -170,7 +186,6 @@ public class Stream {
     */
     public static class Message {
         private static AtomicInteger id_count = new AtomicInteger();
-
         private int id;
         private String service;
         private String action;
@@ -228,12 +243,9 @@ public class Stream {
                 throw new IllegalArgumentException("Action/Service cannot be null");
 
             this.id = id_count.incrementAndGet();
-
             this.service = action.service().name();
             this.action = action.toString();
-
             this.headers = headers != null ? headers : new HashMap<>();
-
             this.payload = payload;
 
             this.build();
@@ -251,6 +263,7 @@ public class Stream {
     private static class IPCReader implements Runnable {
         private final BufferedInputStream istream;
         private final ConcurrentHashMap<Integer, CompletableFuture<Response>> promises;
+        private IPC ipc;
 
         private String readLine() throws IOException {
             StringBuilder builder = new StringBuilder();
@@ -259,14 +272,13 @@ public class Stream {
                 int chr = this.istream.read();
 
                 if (chr == -1) throw new EOFException();
-
                 if (chr == '\n') return builder.toString();
-
                 if (chr != '\r') builder.append((char) chr);
             }
         }
 
-        private String readBytes(int length) throws IOException {
+        private String readBytes(int length)
+        throws EOFException, IOException {
             StringBuilder builder = new StringBuilder(length);
 
             for (int i = 0; i < length; i++) {
@@ -283,17 +295,15 @@ public class Stream {
         @Override
         public void run() {
             
-            try {
+            try {                
                 while (true) {
-
                     // <ID> <STATUS> <STATUS_CODE>
-                    String statusline = readLine();
-
+                    String statusline = readLine(); //
                     String[] status = statusline.split(" ", 3);
 
                     // [Header-Count]
                     int header_count = Integer.parseInt(
-                        readLine()
+                        readLine() //
                             .replace("[", "")
                             .replace("]", "")
                     );
@@ -302,11 +312,11 @@ public class Stream {
                     Map<String, String> headers = new HashMap<>();
 
                     for (int i = 0; i < header_count; i++) {
-                        String header = readLine();
+                        String header = readLine(); //
                         int separator = header.indexOf(':');
 
                         if (separator == -1)
-                            throw new IOException("Invalid header: " + header);
+                            throw new IOException("Invalid header: " + header); //
 
                         String key = header.substring(0, separator).trim();
                         String value = header.substring(separator + 1).trim();
@@ -315,13 +325,13 @@ public class Stream {
                     }
 
                     // [Length]<Payload>
-                    String lenline = readLine();
+                    String lenline = readLine(); //
 
                     int length = Integer.parseInt(
                         lenline.substring(1, lenline.indexOf(']'))
                     );
 
-                    String payload = readBytes(length);
+                    String payload = readBytes(length); //
 
                     Response res = new Response(
                         Integer.parseInt(status[0]),
@@ -336,14 +346,23 @@ public class Stream {
                     if (promise != null) promise.complete(res);
                 }
 
-            } catch (IOException e) {
-                // Will decide what to do here later.
+            } catch (NumberFormatException | IOException e) {
+                /**
+                 * This exception could have been occured due to either parsing of the response
+                 * or due to pipeline being closed (EOFException) else, invalid integer format. In
+                 * any of the cases, they are protocol level issues. And the process bound to
+                 * thes requests can't proceed further safely. So mark them complete exceptionally
+                 * and clear the promises map. The parent process is expected to handle this
+                 */
+
+                this.ipc.fail();
             }
         }
 
-        IPCReader(ConcurrentHashMap<Integer, CompletableFuture<Response>> promises) {
+        IPCReader(ConcurrentHashMap<Integer, CompletableFuture<Response>> promises, IPC ipc) {
             this.istream = new BufferedInputStream(System.in);
             this.promises = promises;
+            this.ipc = ipc;
         }
     }
 
@@ -353,6 +372,7 @@ public class Stream {
     private static class IPCWriter implements Runnable{
         private BlockingDeque<Message> oque;
         private BufferedOutputStream ostream;
+        private IPC ipc;
 
         @Override
         public void run(){
@@ -367,15 +387,23 @@ public class Stream {
                 }
 
             } catch(InterruptedException e){
+                this.ipc.fail();
                 Thread.currentThread().interrupt();
             } catch (IOException e) {
-                // Will decide what to do here later.
+                /**
+                 * This means, the writer pipe failed. In such cases, we can't write the stdout.
+                 * So we should exit this thread. Other processes are expected to acknowledge this
+                 * and stop sending messages.
+                 */
+
+                this.ipc.fail();
             }
         }
 
-        IPCWriter(BlockingDeque<Message> oque){
+        IPCWriter(BlockingDeque<Message> oque, IPC ipc){
             this.oque = oque;
             this.ostream = new BufferedOutputStream(System.out);
+            this.ipc = ipc;
         }
     }
 
@@ -385,10 +413,13 @@ public class Stream {
      */
     public void send(Message msg){
 
+        if (!this.ipc.status()) {
+            throw new IllegalStateException("IPC connection failed");
+        }
+
         try { this.oque.put(msg); }
-        
         catch (InterruptedException e) {
-            // Will decide what to do here later
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -400,9 +431,19 @@ public class Stream {
      */
     public CompletableFuture<Response> request(Message msg)
     throws InterruptedException{
+
+        if (!this.ipc.status())
+            throw new IllegalStateException("IPC connection failed");
+
         CompletableFuture<Response> promise = new CompletableFuture<>();
         this.promises.put(msg.getId(), promise);
-        this.oque.put(msg);
+        
+        try { this.oque.put(msg); }
+        catch (InterruptedException e) {
+            this.promises.remove(msg.getId());
+            Thread.currentThread().interrupt();
+            throw e;
+        }
 
         return promise;
     }
@@ -410,12 +451,13 @@ public class Stream {
     public Stream(){
         this.oque = new LinkedBlockingDeque<>();
         this.promises = new ConcurrentHashMap<>();
+        this.ipc = new IPC(this.oque, this.promises);
 
-        Thread writer = new Thread(new IPCWriter(this.oque));
+        Thread writer = new Thread(new IPCWriter(this.oque, this.ipc));
         writer.setDaemon(true);
         writer.start();
         
-        Thread reader = new Thread(new IPCReader(this.promises));
+        Thread reader = new Thread(new IPCReader(this.promises, this.ipc));
         reader.setDaemon(true);
         reader.start();
     }
