@@ -1,25 +1,16 @@
 package com.mdcs.core;
 
 /*
- * Architecture note:
- *
- * This class is the single communication layer used by the Core module.
- *
  * The Core never performs console I/O directly and never knows whether it is running standalone
  * or as a child process. It simply sends and receives typed messages through this stream.
  *
  * Standalone mode: Stream <-> Console
- * Child process mode: Core <-> Stream <-> IPC Pipe <-> Manager
+ * Child process mode: Core <-> IPC Pipe <-> Manager
  *
  * The Manager interprets message Service types (LOG, AUTH, UPDATE, etc.) and decides how to
- * fulfill them. It may delegate to a CLI, GUI, or any other interface, but that decision is
- * completely outside the Core.
- *
- * Therefore, message types represent services/capabilities requested by the Core, not UI actions.
- * The Core only tells what it needs, while the Manager decides how to work on the request.
- *
- * This class is responsible only for serializing/deserializing the protocol, not for implementing
- * any business or UI logic.
+ * fulfill them, but that decision is completely outside the Core. Therefore, message types
+ * represent services/capabilities requested by the Core, not UI actions. The Core only tells what
+ * it needs, while the Manager decides how to work on the request.
  */
 
 import java.io.BufferedInputStream;
@@ -36,39 +27,31 @@ import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /*
- * Stream logging structure: 
- *  Got inspirations from HTTP. Because, it is language independent, easy to parse, and more
- *  importantly, it scales well.
- * 
- *  This protocol separates transport metadata from process related information (payload) which
- *  makes receiving process stay completely unaware of intent of sender process.
- * 
- *  Request structure [format to send to manager]:
- *      <ID> <SERVICE> <ACTION>
- *      [Header-Count]
- *      <Key>: <Value>
- *      ...
- *      [Length]<Payload>
- * 
- *  Response structure [format expected to receive from manager]:
- *      <ID> <STATUS> <STATUS_CODE>
- *      [Header-Count]
- *      <Key>: <Value>
- *      ...
- *      [Length]<Payload>
- * 
+ * Request structure [format to send to manager]:
+ *     <ID> <SERVICE> <ACTION>
+ *     [Header-Count]
+ *     <Key>: <Value>
+ *     ...
+ *     [Length]<Payload>
+ *
+ * Response structure [format expected to receive from manager]:
+ *     <ID> <STATUS> <STATUS_CODE>
+ *     [Header-Count]
+ *     <Key>: <Value>
+ *     ...
+ *     [Length]<Payload>
+ *
  * Payload-Length specifies the number of bytes encoded in the payload, not number of characters.
  * A response with certain ID is expected to have a request with same ID, if not, it will be
  * ignored.
  */
 
 /**
- * Includes methods to read and write into the buffer (IPC pipes / console)
+ * Includes methods to read and write from/into: stdin, stdour, stderr
  * 
- * When launched as a child process, writes / reads into / from the IPC pipe. And when launched
- * as an independent process, it writes or reads from console.
- * 
- * Defines different type of output streams which can be parsed by the parent.
+ * When launched as a child process, writes/reads into/from the IPC pipe. And when launched as an
+ * independent process, it writes or reads from console - Which is automatic, no need to handle
+ * separately.
  */
 
 public class Stream {
@@ -80,6 +63,149 @@ public class Stream {
         private BlockingDeque<Message> oque;
         private ConcurrentHashMap<Integer, CompletableFuture<Response>> promises;
         private volatile boolean connected = true;
+
+        /**
+         * Reads/watches the stdin pipe continuosly. Parses the message string based on the format
+         * and completes the promise.
+         * 
+         * If there is no related promise pending, it simply ignores them. This is expected and not
+         * any limitation. This is because, a response from Manager should follow a request from
+         * Core.
+        */
+        private static class In implements Runnable {
+            private final BufferedInputStream istream;
+            private final ConcurrentHashMap<Integer, CompletableFuture<Response>> promises;
+            private IPC ipc;
+
+            private String readLine() throws IOException {
+                StringBuilder builder = new StringBuilder();
+
+                while (true) {
+                    int chr = this.istream.read();
+
+                    if (chr == -1) throw new EOFException();
+                    if (chr == '\n') return builder.toString();
+                    if (chr != '\r') builder.append((char) chr);
+                }
+            }
+
+            private String readBytes(int len)
+            throws EOFException, IOException {
+                byte[] bytes = this.istream.readNBytes(len);
+
+                if (bytes.length != len) throw new EOFException();
+
+                return new String(bytes, StandardCharsets.UTF_8);
+            }
+
+            @Override
+            public void run() {
+                
+                try {
+                    while (true) {
+                        String statln = readLine();
+                        String[] status = statln.split(" ", 3);
+
+                        int headc = Integer.parseInt(
+                            readLine()
+                                .replace("[", "")
+                                .replace("]", "")
+                        );
+
+                        Map<String, String> heads = new HashMap<>();
+
+                        for (int i = 0; i < headc; i++) {
+                            String head = readLine();
+                            int separator = head.indexOf(':');
+
+                            if (separator == -1) throw new IOException();
+
+                            String key = head.substring(0, separator).trim();
+                            String value = head.substring(separator + 1).trim();
+
+                            heads.put(key, value);
+                        }
+
+                        String lenline = readLine();
+
+                        int len = Integer.parseInt(
+                            lenline.substring(1, lenline.indexOf(']'))
+                        );
+
+                        String payload = readBytes(len);
+
+                        Response res = new Response(
+                            Integer.parseInt(status[0]),
+                            status[1],
+                            Integer.parseInt(status[2]),
+                            heads,
+                            payload
+                        );
+
+                        CompletableFuture<Response> promise = this.promises.remove(res.getId());
+
+                        if (promise != null) promise.complete(res);
+                    }
+
+                } catch (NumberFormatException | IOException e) {
+                    /**
+                     * This exception could have been occured due to either parsing of the response
+                     * or due to pipeline being closed (EOFException) else, invalid integer format. In
+                     * any of the cases, they are protocol level issues. And the process bound to
+                     * thes requests can't proceed further safely. So mark them complete exceptionally
+                     * and clear the promises map. The parent process is expected to handle this
+                     */
+
+                    this.ipc.fail();
+                }
+            }
+
+            In(ConcurrentHashMap<Integer, CompletableFuture<Response>> promises, IPC ipc) {
+                this.istream = new BufferedInputStream(System.in);
+                this.promises = promises;
+                this.ipc = ipc;
+            }
+        }
+
+        /**
+         * Watches output queue to write (atomic) to stdout continuously.
+         */
+        private static class Out implements Runnable{
+            private BlockingDeque<Message> oque;
+            private BufferedOutputStream ostream;
+            private IPC ipc;
+
+            @Override
+            public void run(){
+
+                try{
+                    while (true){
+                        Message msg = oque.take();
+
+                        this.ostream.write(msg.get().getBytes(StandardCharsets.UTF_8));
+                        ostream.flush();
+                    }
+
+                } catch(InterruptedException e){
+                    this.ipc.fail();
+                    Thread.currentThread().interrupt();
+                } catch (IOException e) {
+                    /**
+                     * This means, the writer pipe failed. In such cases, we can't write the stdout.
+                     * So we should exit this thread. Other processes are expected to acknowledge this
+                     * and stop sending messages.
+                     */
+
+                    this.ipc.fail();
+                }
+            }
+
+            Out(BlockingDeque<Message> oque, IPC ipc){
+                this.oque = oque;
+                this.ostream = new BufferedOutputStream(System.out);
+                this.ipc = ipc;
+            }
+        }
 
         private void fail(){
 
@@ -106,22 +232,15 @@ public class Stream {
     }
 
     /**
-     * Services exposed by the Manager/Core over the IPC protocol.
+     * Services or functionalities Core expects Manager to be capable of directly or from others.
      * 
      * Each service tag corresponds to predefined set of actions possible. Any action that is not
      * in the domain of a service must be ignored.
-     * 
-     * Services and Actions are part of Stream only. Because, Stream is the one that serializes
-     * and deserializes the messages.
      */
     public enum Service{
         AUTH, LOG, UPDATE
     }
 
-    /**
-     * Every action must be associated with a service. This is to ensure that the parent process
-     * can identify the service and delegate the action to the concerned sub-process.
-     */
     public interface Action{ Service service(); }
 
     public enum AuthAct implements Action{
@@ -186,11 +305,11 @@ public class Stream {
     */
     public static class Message {
         private static AtomicInteger id_count = new AtomicInteger();
-        private int id;
-        private String service;
-        private String action;
-        private Map<String, String> headers;
-        private String payload;
+        private final int id;
+        private final String service;
+        private final String action;
+        private final Map<String, String> headers;
+        private final String payload;
         private String msg;
 
         String get() { return this.msg; }
@@ -200,15 +319,13 @@ public class Stream {
         private void build(){
             StringBuilder builder = new StringBuilder();
 
-            // Request line
-            builder.append(id)
+            builder.append(this.id)
                 .append(" ")
-                .append(service)
+                .append(this.service)
                 .append(" ")
-                .append(action)
+                .append(this.action)
                 .append("\n");
 
-            // Headers
             builder.append("[").append(headers.size()).append("]\n");
 
             for (Map.Entry<String, String> header : headers.entrySet()) {
@@ -218,17 +335,10 @@ public class Stream {
                     .append("\n");
             }
 
-            // Payload
             builder.append("[")
-                .append(payload.getBytes().length)
+                .append(this.payload.getBytes(StandardCharsets.UTF_8).length)
                 .append("]")
-                .append(payload);
-
-            /**
-             * Trailing newline to indicate end of message. This is important for the reader to
-             * know when the message ends, especially when the payload is empty.
-             */
-            builder.append("\n");
+                .append(this.payload);
 
             this.msg = builder.toString();
         }
@@ -253,174 +363,16 @@ public class Stream {
     }
 
     /**
-     * Reads / watches the stdin pipe continuosly. Parses the message string based on the format
-     * and completes the promise.
-     * 
-     * If there is no related promise pending, it simply ignores them. This is expected and not
-     * any limitation, this is because, a response from Manager should follow a request from
-     * manager.
-    */
-    private static class IPCReader implements Runnable {
-        private final BufferedInputStream istream;
-        private final ConcurrentHashMap<Integer, CompletableFuture<Response>> promises;
-        private IPC ipc;
-
-        private String readLine() throws IOException {
-            StringBuilder builder = new StringBuilder();
-
-            while (true) {
-                int chr = this.istream.read();
-
-                if (chr == -1) throw new EOFException();
-                if (chr == '\n') return builder.toString();
-                if (chr != '\r') builder.append((char) chr);
-            }
-        }
-
-        private String readBytes(int length)
-        throws EOFException, IOException {
-            StringBuilder builder = new StringBuilder(length);
-
-            for (int i = 0; i < length; i++) {
-                int chr = this.istream.read();
-
-                if (chr == -1) throw new EOFException();
-
-                builder.append((char) chr);
-            }
-
-            return builder.toString();
-        }
-
-        @Override
-        public void run() {
-            
-            try {                
-                while (true) {
-                    // <ID> <STATUS> <STATUS_CODE>
-                    String statusline = readLine();
-                    String[] status = statusline.split(" ", 3);
-
-                    // [Header-Count]
-                    int header_count = Integer.parseInt(
-                        readLine()
-                            .replace("[", "")
-                            .replace("]", "")
-                    );
-
-                    // <Key>: <Value>
-                    Map<String, String> headers = new HashMap<>();
-
-                    for (int i = 0; i < header_count; i++) {
-                        String header = readLine();
-                        int separator = header.indexOf(':');
-
-                        if (separator == -1)
-                            throw new IOException("Invalid header: " + header);
-
-                        String key = header.substring(0, separator).trim();
-                        String value = header.substring(separator + 1).trim();
-
-                        headers.put(key, value);
-                    }
-
-                    // [Length]<Payload>
-                    String lenline = readLine();
-
-                    int length = Integer.parseInt(
-                        lenline.substring(1, lenline.indexOf(']'))
-                    );
-
-                    String payload = readBytes(length);
-
-                    Response res = new Response(
-                        Integer.parseInt(status[0]),
-                        status[1],
-                        Integer.parseInt(status[2]),
-                        headers,
-                        payload
-                    );
-
-                    CompletableFuture<Response> promise = this.promises.remove(res.getId());
-
-                    if (promise != null) promise.complete(res);
-                }
-
-            } catch (NumberFormatException | IOException e) {
-                /**
-                 * This exception could have been occured due to either parsing of the response
-                 * or due to pipeline being closed (EOFException) else, invalid integer format. In
-                 * any of the cases, they are protocol level issues. And the process bound to
-                 * thes requests can't proceed further safely. So mark them complete exceptionally
-                 * and clear the promises map. The parent process is expected to handle this
-                 */
-
-                this.ipc.fail();
-            }
-        }
-
-        IPCReader(ConcurrentHashMap<Integer, CompletableFuture<Response>> promises, IPC ipc) {
-            this.istream = new BufferedInputStream(System.in);
-            this.promises = promises;
-            this.ipc = ipc;
-        }
-    }
-
-    /**
-     * Watches output queue to write (atomic) to stdout continuously.
-    */
-    private static class IPCWriter implements Runnable{
-        private BlockingDeque<Message> oque;
-        private BufferedOutputStream ostream;
-        private IPC ipc;
-
-        @Override
-        public void run(){
-
-            try{
-                while (true){
-                    Message msg = oque.take();
-
-                    // write to stdout so parent/manager can read it
-                    this.ostream.write(msg.get().getBytes(StandardCharsets.UTF_8));
-                    ostream.flush();
-                }
-
-            } catch(InterruptedException e){
-                this.ipc.fail();
-                Thread.currentThread().interrupt();
-            } catch (IOException e) {
-                /**
-                 * This means, the writer pipe failed. In such cases, we can't write the stdout.
-                 * So we should exit this thread. Other processes are expected to acknowledge this
-                 * and stop sending messages.
-                 */
-
-                this.ipc.fail();
-            }
-        }
-
-        IPCWriter(BlockingDeque<Message> oque, IPC ipc){
-            this.oque = oque;
-            this.ostream = new BufferedOutputStream(System.out);
-            this.ipc = ipc;
-        }
-    }
-
-    /**
      * This method is best for Fire-And-Forget kind of payloads. Best use cases are Logs, Updates,
      * and Notifications.
      */
     public void send(Message msg){
 
-        if (!this.ipc.status()) {
+        if (!this.ipc.status())
             throw new IllegalStateException("IPC connection failed");
-        }
 
         try { this.oque.put(msg); }
-        catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 
     /**
@@ -453,11 +405,11 @@ public class Stream {
         this.promises = new ConcurrentHashMap<>();
         this.ipc = new IPC(this.oque, this.promises);
 
-        Thread writer = new Thread(new IPCWriter(this.oque, this.ipc));
+        Thread writer = new Thread(new IPC.Out(this.oque, this.ipc));
         writer.setDaemon(true);
         writer.start();
         
-        Thread reader = new Thread(new IPCReader(this.promises, this.ipc));
+        Thread reader = new Thread(new IPC.In(this.promises, this.ipc));
         reader.setDaemon(true);
         reader.start();
     }
