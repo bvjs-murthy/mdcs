@@ -32,14 +32,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  *     [Header-Count]
  *     <Key>: <Value>
  *     ...
- *     [Length]<Payload>
+ *     [Length]
+ *     <Payload>
  *
  * Response structure [format expected to receive from manager]:
  *     <ID> <STATUS> <STATUS_CODE>
  *     [Header-Count]
  *     <Key>: <Value>
  *     ...
- *     [Length]<Payload>
+ *     [Length]
+ *     <Payload>
  *
  * Payload-Length specifies the number of bytes encoded in the payload, not number of characters.
  * A response with certain ID is expected to have a request with same ID, if not, it will be
@@ -56,11 +58,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class Stream {
     private BlockingDeque<Message> oque;
+    private BlockingDeque<String> eque;
     private ConcurrentHashMap<Integer, CompletableFuture<Response>> promises;
     private IPC ipc;
     
     private static class IPC{
         private BlockingDeque<Message> oque;
+        private BlockingDeque<String> eque;
         private ConcurrentHashMap<Integer, CompletableFuture<Response>> promises;
         private volatile boolean connected = true;
 
@@ -150,10 +154,11 @@ public class Stream {
                 } catch (NumberFormatException | IOException e) {
                     /**
                      * This exception could have been occured due to either parsing of the response
-                     * or due to pipeline being closed (EOFException) else, invalid integer format. In
-                     * any of the cases, they are protocol level issues. And the process bound to
-                     * thes requests can't proceed further safely. So mark them complete exceptionally
-                     * and clear the promises map. The parent process is expected to handle this
+                     * or due to pipeline being closed (EOFException) else, invalid integer format.
+                     * In any of the cases, they are protocol level issues. And the process bound
+                     * to the requests can't proceed further safely. So mark them complete
+                     * exceptionally and clear the promises map. The parent process is expected to
+                     * handle this
                      */
 
                     this.ipc.fail();
@@ -192,8 +197,8 @@ public class Stream {
                 } catch (IOException e) {
                     /**
                      * This means, the writer pipe failed. In such cases, we can't write the stdout.
-                     * So we should exit this thread. Other processes are expected to acknowledge this
-                     * and stop sending messages.
+                     * So we should exit this thread. Other processes are expected to acknowledge
+                     * this and stop sending messages.
                      */
 
                     this.ipc.fail();
@@ -203,6 +208,40 @@ public class Stream {
             Out(BlockingDeque<Message> oque, IPC ipc){
                 this.oque = oque;
                 this.ostream = new BufferedOutputStream(System.out);
+                this.ipc = ipc;
+            }
+        }
+
+        private static class Err implements Runnable{
+            private BlockingDeque<String> eque;
+            private BufferedOutputStream estream;
+            private IPC ipc;
+
+            @Override
+            public void run(){
+
+                try{
+                    while (true){
+                        String msg = eque.take();
+
+                        this.estream.write(msg.getBytes(StandardCharsets.UTF_8));
+                        estream.flush();
+                    }
+
+                } catch(InterruptedException e){
+                    this.ipc.fail();
+                    Thread.currentThread().interrupt();
+                } catch (IOException e) {
+                    // This shouldn't fail the IPC, as it only means the path that leads to stderr
+                    // is closed. NOt the stdin or stdout. That can be managed by In, Out.
+
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            Err(BlockingDeque<String> eque, IPC ipc){
+                this.eque = eque;
+                this.estream = new BufferedOutputStream(System.err);
                 this.ipc = ipc;
             }
         }
@@ -218,15 +257,18 @@ public class Stream {
 
             this.promises.clear();
             this.oque.clear();
+            this.eque.clear();
         }
 
         private boolean status(){ return this.connected; }
 
         private IPC(
             BlockingDeque<Message> oque,
+            BlockingDeque<String> eque,
             ConcurrentHashMap<Integer, CompletableFuture<Response>> promises
         ){
             this.oque = oque;
+            this.eque = eque;
             this.promises = promises;
         }
     }
@@ -337,7 +379,7 @@ public class Stream {
 
             builder.append("[")
                 .append(this.payload.getBytes(StandardCharsets.UTF_8).length)
-                .append("]")
+                .append("]\n")
                 .append(this.payload);
 
             this.msg = builder.toString();
@@ -363,8 +405,8 @@ public class Stream {
     }
 
     /**
-     * This method is best for Fire-And-Forget kind of payloads. Best use cases are Logs, Updates,
-     * and Notifications.
+     * This method is best for Fire-And-Forget kind of payloads. Best use cases are Updates,
+     * Notifications etc.
      */
     public void send(Message msg){
 
@@ -399,18 +441,29 @@ public class Stream {
 
         return promise;
     }
+
+    public void log(LogAct level, String msg){
+
+        try { this.eque.put("[" + level + "] " + msg + "\n"); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
     
     public Stream(){
         this.oque = new LinkedBlockingDeque<>();
+        this.eque = new LinkedBlockingDeque<>();
         this.promises = new ConcurrentHashMap<>();
-        this.ipc = new IPC(this.oque, this.promises);
+        this.ipc = new IPC(this.oque, this.eque, this.promises);
 
-        Thread writer = new Thread(new IPC.Out(this.oque, this.ipc));
-        writer.setDaemon(true);
-        writer.start();
+        Thread stdout = new Thread(new IPC.Out(this.oque, this.ipc));
+        stdout.setDaemon(true);
+        stdout.start();
         
-        Thread reader = new Thread(new IPC.In(this.promises, this.ipc));
-        reader.setDaemon(true);
-        reader.start();
+        Thread stdin = new Thread(new IPC.In(this.promises, this.ipc));
+        stdin.setDaemon(true);
+        stdin.start();
+
+        Thread stderr = new Thread(new IPC.Err(this.eque, this.ipc));
+        stderr.setDaemon(true);
+        stderr.start();
     }
 }
