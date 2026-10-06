@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mdcs.core.Stream;
 import com.mdcs.core.Stream.LogAct;
-import com.mdcs.core.Stream.Message;
 import com.mdcs.shared.fileio.FileIO;
 import com.mdcs.shared.fileio.DataClasses.*;
 import com.mdcs.shared.models.Report;
@@ -91,13 +90,7 @@ public class Schema implements Runnable{
                 ObjectNode node = (ObjectNode) raw;
 
                 if (!this.validSchema(template, node)){
-                    this.stream.send(
-                        new Message(
-                            LogAct.ERROR, 
-                            null, 
-                            "Invalid file schema for " + tem_name + "\n"
-                        )
-                    );
+                    this.stream.log(LogAct.ERROR, "Invalid file schema for " + tem_name);
 
                     try{
                         // node would be updated if schema is invalid. So we need to write those
@@ -105,22 +98,15 @@ public class Schema implements Runnable{
 
                         FileIO.writeJsonNode(template, node);
                         
-                        this.stream.send(
-                            new Message(
-                                LogAct.ERROR, 
-                                null, 
-                                "Defaulted invalid file content for " + tem_name + "\n"
-                            )
+                        this.stream.log(
+                            LogAct.ERROR, "Defaulted invalid file content for " + tem_name
                         );
                     } catch (Exception e){
                         // Failed to write file. Stop application startup
 
-                        this.stream.send(
-                            new Message(
-                                LogAct.ERROR, 
-                                null, 
-                                "Failed to default invalid file, " + tem_name + "\n"
-                            )
+                        this.stream.log(
+                            LogAct.CRITICAL, 
+                            "Failed to default invalid file, " + tem_name
                         );
 
                         this.report.setAppState(AppState.TERMINATE);
@@ -133,36 +119,19 @@ public class Schema implements Runnable{
                 // This could be caused due to user tinkering files or corrupted file write.
                 // Try backup restore first and then default file write if it fails
 
-                this.stream.send(
-                    new Message(
-                        LogAct.ERROR, 
-                        null, 
-                        "Invalid file format for " + tem_name + "\n"
-                    )
-                );
+                this.stream.log(LogAct.ERROR, "Invalid file format for " + tem_name);
 
                 if (!recover(template)){
                     // Recovery failed. Create default files
                     
                     try{
                         FileIO.createAndWrite(template);
-
-                        this.stream.send(
-                            new Message(
-                                LogAct.INFO, 
-                                null, 
-                                "Created default file for " + tem_name + "\n"
-                            )
-                        );
+                        this.stream.log(LogAct.INFO, "Created default file for " + tem_name);
                     } catch (Exception f){
                         // Failed to write defaults. Stop application startup
 
-                        this.stream.send(
-                            new Message(
-                                LogAct.ERROR,
-                                null,
-                                "Failed to recover/create " + tem_name + ".\n"
-                            )
+                        this.stream.log(
+                            LogAct.CRITICAL, "Failed to recover/create " + tem_name + "."
                         );
 
                         this.report.setAppState(AppState.TERMINATE);
@@ -171,13 +140,7 @@ public class Schema implements Runnable{
                     }
                 } else{
                     // Backups recovered
-                    this.stream.send(
-                        new Message(
-                            LogAct.INFO, 
-                            null, 
-                            "Recovered " + tem_name + " from backups.\n"
-                        )
-                    );
+                    this.stream.log(LogAct.INFO, "Recovered backup for " + tem_name + ".");
                 }
             }
         }
@@ -227,13 +190,7 @@ public class Schema implements Runnable{
     
     @Override
     public void run(){
-        this.stream.send(
-            new Message(
-                LogAct.INFO, 
-                null, 
-                "Validating file system schema and format...\n"
-            )
-        );
+        this.stream.log(LogAct.INFO, "Validating file system schema and format...");
         
         // Makes sure directories exist already
         FileIO.createAppFileDirs();
@@ -248,12 +205,9 @@ public class Schema implements Runnable{
             environment. Chances of reaching this are low but never zero !!!
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.CRITICAL, 
-                    null, 
-                    "Expected data field doesn't exist or can't be accessed in UNKNOWN file.\n"
-                )
+            this.stream.log(
+                LogAct.CRITICAL, 
+                "Expected data field doesn't exist or can't be accessed in UNKNOWN file."
             );
 
             this.report.setAppState(AppState.TERMINATE);

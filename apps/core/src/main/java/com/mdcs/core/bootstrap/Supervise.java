@@ -4,7 +4,6 @@ import java.util.Properties;
 
 import com.mdcs.core.Stream;
 import com.mdcs.core.Stream.LogAct;
-import com.mdcs.core.Stream.Message;
 import com.mdcs.shared.models.Report;
 import com.mdcs.shared.models.Report.AppState;
 import com.mdcs.shared.network.ProtoMet;
@@ -37,13 +36,7 @@ public class Supervise{
     public Report report;
 
     public void run(){
-        this.stream.send(
-            new Message(
-                LogAct.INFO, 
-                null, 
-                "Initiating application bootstrap...\n"
-            )
-        );
+        this.stream.log(LogAct.INFO, "Initiating application bootstrap...");
 
         Schema schema = new Schema(this.stream, this.report);
         Thread sch_worker = new Thread(schema);
@@ -63,31 +56,13 @@ public class Supervise{
         catch (InterruptedException e) { ver_worker.interrupt(); }
 
         if (this.report.getAppState() == AppState.CONTINUE)
-            this.stream.send(
-                new Message(
-                    LogAct.INFO, 
-                    null, 
-                    "Application bootstrap reported with no severity.\n"
-                )
-            );
+            this.stream.log(LogAct.INFO, "Application bootstrap reported with no severity.");
 
         else if (this.report.getAppState() == AppState.BLOCK)
-            this.stream.send(
-                new Message(
-                    LogAct.CRITICAL, 
-                    null, 
-                    "Application startup blocked after bootstrap.\n"
-                )
-            );
+            this.stream.log(LogAct.CRITICAL, "Application startup blocked after bootstrap.");
 
         else if (this.report.getAppState() == AppState.TERMINATE)
-            this.stream.send(
-                new Message(
-                    LogAct.CRITICAL, 
-                    null, 
-                    "Application startup aborted after bootstrap.\n"
-                )
-            );
+            this.stream.log(LogAct.CRITICAL, "Application startup aborted after bootstrap.");
     }
 
     public Supervise(ProtoMet server, Properties vers, Stream stream, Report report){

@@ -60,14 +60,10 @@ public class Version implements Runnable{
             if (plugin.update_req){
                 // Pass plugin name, currnt version, available version and continue to application
 
-                this.stream.send(
-                    new Message(
-                        LogAct.INFO,
-                        null,
-                        "Plugin update available [name=" + name
-                            + " current=" + curr_ver
-                            + " available=" + avail_ver + "]\n"
-                    )
+                this.stream.log(
+                    LogAct.INFO, 
+                    "Plugin update available " +
+                        "[name=" + name + " current=" + curr_ver + " available=" + avail_ver + "]"
                 );
 
                 this.stream.send(
@@ -90,13 +86,7 @@ public class Version implements Runnable{
             => Terminate application startup. May change this later...
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR,
-                    null,
-                    "Failed to persist plugin compatibility\n"
-                )
-            );
+            this.stream.log(LogAct.ERROR, "Failed to persist plugin compatibility");
             this.report.setAppState(AppState.TERMINATE);
         }
     }
@@ -122,12 +112,10 @@ public class Version implements Runnable{
         if (this.ver_meta.body.app.critical_update){
             // Block the app startup and inform user
 
-            this.stream.send(
-                new Message(
-                    LogAct.CRITICAL, 
-                    null, 
-                    "Critical update required. Startup cannot continue.\n"
-                )
+            this.stream.log(
+                LogAct.CRITICAL,
+                "Critical update required [current=" + curr_ver + " available=" + avail_ver + "]"
+                    + "; Application blocked."
             );
 
             this.stream.send(
@@ -153,13 +141,11 @@ public class Version implements Runnable{
         ){
             // New update available => Notify user and continue app execution
 
-            this.stream.send(
-                new Message(
-                    LogAct.INFO, 
-                    null, 
-                    "Optional application update available.\n"
-                )
+            this.stream.log(
+                LogAct.INFO,
+                "Optional update available [current=" + curr_ver + " available=" + avail_ver + "]"
             );
+
             this.stream.send(
                 new Message(
                     UpdateAct.OPTIONAL, 
@@ -210,14 +196,7 @@ public class Version implements Runnable{
             updates.
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR,
-                    null,
-                    "Failed to persist plugin compatibility\n"
-                )
-            );
-
+            this.stream.log(LogAct.ERROR, "Failed to persist plugin compatibility.");
             throw new RuntimeException();
 
         } catch (InterruptedException e){
@@ -226,12 +205,8 @@ public class Version implements Runnable{
             to application without update check
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR,
-                    null,
-                    "Failed to fetch version metadata.\n"
-                )
+            this.stream.log(
+                LogAct.ERROR, "Failed to fetch version metadata; " + e.getMessage() + '.'
             );
 
             Thread.currentThread().interrupt();
@@ -242,12 +217,8 @@ public class Version implements Runnable{
             application is terminated because, this may cause unexpected behaviors
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR,
-                    null,
-                    "Failed to fetch version metadata due to some internal error.\n"
-                )
+            this.stream.log(
+                LogAct.ERROR, "Failed to fetch version metadata; " + e.getMessage() + '.'
             );
 
             this.report.setAppState(AppState.TERMINATE);
@@ -267,12 +238,8 @@ public class Version implements Runnable{
             if (!version.matches("^[0-9]+\\.[0-9]+\\.[0-9]$")) {
                 // The version of this module is not in the valid form.
                 
-                this.stream.send(
-                    new Message(
-                        LogAct.ERROR,
-                        null,
-                        "Invalid version string for '" + key + "' {" + version + "}\n"
-                    )
+                this.stream.log(
+                    LogAct.ERROR, "Invalid version string for '" + key + "' {" + version + "}."
                 );
 
                 return false;
@@ -284,12 +251,9 @@ public class Version implements Runnable{
 
     @Override
     public void run(){
-        this.stream.send(
-            new Message(
-                LogAct.INFO, 
-                null, 
-                "Verifying installed version and checking for updates...\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Initializing installed version verification and checking for updates..."
         );
 
         if (!this.format()){

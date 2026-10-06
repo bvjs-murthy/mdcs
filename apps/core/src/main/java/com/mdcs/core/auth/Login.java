@@ -30,11 +30,9 @@ public class Login{
 
     private void getCallbacks()
     throws IOException{
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Requesting account information for login workflow...\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Requesting account information for login workflow..."
         );
 
         CompletableFuture<Response> promise;
@@ -49,14 +47,12 @@ public class Login{
                 Callbacks.Login.class
             );
         } catch (JsonProcessingException | InterruptedException | ExecutionException e){
-            throw new IOException("Failed to request/fetch login data.\n");
+            throw new IOException("Failed to request/fetch login data.");
         }
 
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Received account information successfully.\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Received account information successfully."
         );
     }
 
@@ -77,7 +73,7 @@ public class Login{
         HttpResponse<String> res;
 
         try{ res = this.server.post(message); }
-        catch (IOException e){ throw new IOException("Failed to contact server.\n"); }
+        catch (IOException e){ throw new IOException("Failed to contact server."); }
 
         if (res.statusCode() >= 500){
             /*
@@ -85,11 +81,9 @@ public class Login{
             cannot be performed now or till server has recovered.
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.CRITICAL, null,
-                    "Login failed due to an internal server error.\n"
-                )
+            this.stream.log(
+                LogAct.CRITICAL, 
+                "Login failed due to an internal server error."
             );
 
             this.state.set(AuthState.TERMINATE);
@@ -101,7 +95,7 @@ public class Login{
 
         try{ payload = FileIO.toObject(res.body().toString(), LoginRes.class); }
         catch (IOException e){
-            throw new IOException("Failed to parse response object.\n");
+            throw new IOException("Failed to parse response object.");
         }
 
         if (!payload.status){
@@ -110,11 +104,9 @@ public class Login{
             show the error message and prompt user to try again.
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.CRITICAL, null,
-                    "Login failed due to user or environment issue.\n"
-                )
+            this.stream.log(
+                LogAct.CRITICAL, 
+                "Login failed due to user or environment issue."
             );
 
             this.state.set(AuthState.RETRY);
@@ -134,11 +126,9 @@ public class Login{
              * process about it.
              */
 
-            this.stream.send(
-                new Message(
-                    LogAct.INFO, null,
-                    "User account is unverified. Triggering validation workflow...\n"
-                )
+            this.stream.log(
+                LogAct.INFO, 
+                "User account is unverified. Triggering validation workflow..."
             );
 
             Register reg = new Register(
@@ -159,11 +149,9 @@ public class Login{
              * should trigger device enrollment workflow.
              */
 
-            this.stream.send(
-                new Message(
-                    LogAct.INFO, null,
-                    "User account is verified. Triggering device enrollment workflow...\n"
-                )
+            this.stream.log(
+                LogAct.INFO, 
+                "User account is verified. Triggering device enrollment workflow..."
             );
 
             new Enroll(this.server, this.state, this.stream).process();
@@ -174,43 +162,35 @@ public class Login{
         this.user.auth_token = payload.body.auth_tok;
         this.user.refresh_token = payload.body.refresh_tok;
 
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Login workflow completed with no issues.\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Login workflow completed with no issues."
         );
     }
 
     public void run(){
-        this.stream.send(
-            new Message(LogAct.INFO, null, "Initiating login workflow...\n")
-        );
+        this.stream.log(LogAct.INFO, "Initiating login workflow...");
 
         try {
             this.getCallbacks();
             this.usrAuth();
         }
         catch (IOException e){
-            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.stream.log(LogAct.ERROR, e.getMessage());
             this.state.set(AuthState.TERMINATE);
         } catch (InterruptedException e){
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR, null,
-                    "Thread was interrupted while performing user validation\n"
-                )
+            this.stream.log(
+                LogAct.ERROR, 
+                "Thread was interrupted while performing user validation"
             );
 
             this.state.set(AuthState.TERMINATE);
         } catch (ExecutionException e){
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR, null,
-                    "User validation failed after failure to obtain OTP.\n"
-                )
+            this.stream.log(
+                LogAct.ERROR, 
+                "User validation failed after failure to obtain OTP."
             );
 
             this.state.set(AuthState.TERMINATE);
@@ -225,11 +205,9 @@ public class Login{
 
                 this.user.logged_in = false;
 
-                this.stream.send(
-                    new Message(
-                        LogAct.ERROR, null,
-                        "User logged in temporarily after failure to persist user/device data.\n"
-                    )
+                this.stream.log(
+                    LogAct.ERROR, 
+                    "User logged in temporarily after failure to persist user/device data."
                 );
             }
         }

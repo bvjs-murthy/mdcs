@@ -34,11 +34,9 @@ public class Enroll{
 
     private void getCallbacks(AuthAct action)
     throws IOException{
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Requesting device & workspace information for enrollment workflow...\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Requesting device & workspace information for enrollment workflow..."
         );
 
         CompletableFuture<Response> promise;
@@ -51,14 +49,12 @@ public class Enroll{
                 Callbacks.Enroll.class
             );
         } catch (JsonProcessingException | InterruptedException | ExecutionException e) {
-            throw new IOException("Failed to request/fetch enrollment data.\n");
+            throw new IOException("Failed to request/fetch enrollment data.");
         }
 
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Received device & workspace information successfully.\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Received device & workspace information successfully."
         );
     }
 
@@ -68,7 +64,7 @@ public class Enroll{
         
         try { res = this.server.post(msg); }
         catch (IOException e) {
-            throw new IOException("Failed to contact server.\n");
+            throw new IOException("Failed to contact server.");
         }
 
         if (res.statusCode() >= 500){
@@ -77,11 +73,9 @@ public class Enroll{
             that login is triggered.
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.CRITICAL, null,
-                    "Device enrollment failed due to an internal server error.\n"
-                )
+            this.stream.log(
+                LogAct.CRITICAL, 
+                "Device enrollment failed due to an internal server error."
             );
 
             this.state.set(AuthState.RECOVER);
@@ -94,11 +88,9 @@ public class Enroll{
         if (!payload.status){
             // Device enrollment failed due to user / environment related issue
 
-            this.stream.send(
-                new Message(
-                    LogAct.CRITICAL, null,
-                    "Device enrollment failed due to user or environment issue.\n"
-                )
+            this.stream.log(
+                LogAct.CRITICAL, 
+                "Device enrollment failed due to user or environment issue."
             );
             
             this.state.set(AuthState.RETRY);
@@ -109,7 +101,7 @@ public class Enroll{
         this.device.device_id = payload.body.device_id;
         this.device.workspace_id = payload.body.workspace_id;
 
-        this.stream.send(new Message(LogAct.INFO, null, log));
+        this.stream.log(LogAct.INFO, log);
         
         FileIO.fileWrite(this.device);
     }
@@ -122,16 +114,14 @@ public class Enroll{
      */
     public void first()
     throws InterruptedException{
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Initiating first device enrollment...\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Initiating first device enrollment..."
         );
 
         try { this.getCallbacks(AuthAct.FIR_ENROLL); }
         catch (IOException e) {
-            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.stream.log(LogAct.ERROR, e.getMessage());
             this.state.set(AuthState.TERMINATE);
 
             return;
@@ -144,9 +134,9 @@ public class Enroll{
         msg.body = new EnrollFirReq.Body(this.device.device_name, this.device.workspace_name);
 
         try {
-            this.enroll(msg, "Device enrolled successfully and marked as primary.\n");
+            this.enroll(msg, "Device enrolled successfully and marked as primary.");
         } catch (IOException e) {
-            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.stream.log(LogAct.ERROR, e.getMessage());
             this.state.set(AuthState.TERMINATE);
             
             return;
@@ -161,17 +151,15 @@ public class Enroll{
      */
     public void additional()
     throws InterruptedException{
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Initiating additional device enrollment...\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Initiating additional device enrollment..."
         );
 
         try {
             this.getCallbacks(AuthAct.ADD_ENROLL);
         } catch (IOException e) {
-            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.stream.log(LogAct.ERROR, e.getMessage());
             this.state.set(AuthState.TERMINATE);
 
             return;
@@ -188,9 +176,9 @@ public class Enroll{
         );
         
         try {
-            this.enroll(msg, "Device enrolled successfully under the workspace.\n");
+            this.enroll(msg, "Device enrolled successfully under the workspace.");
         } catch (IOException e) {
-            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.stream.log(LogAct.ERROR, e.getMessage());
             this.state.set(AuthState.TERMINATE);
             
             return;

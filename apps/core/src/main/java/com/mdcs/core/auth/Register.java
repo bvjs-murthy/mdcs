@@ -68,11 +68,9 @@ public class Register{
 
     protected void validateUsr()
     throws IOException, InterruptedException, ExecutionException{
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Initializing user account validation flow...\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Initializing user account validation flow..."
         );
 
         String otp = this.stream.request(
@@ -89,17 +87,15 @@ public class Register{
 
         HttpResponse<String> res;
         try { res = this.server.post(message); }
-        catch (IOException e) { throw new IOException("Failed to contact server.\n"); }
+        catch (IOException e) { throw new IOException("Failed to contact server."); }
 
         if (res.statusCode() >= 500){
             // Some internal server error has occured. Return recovery code because, need to
             // recover from Unverified state
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR, null,
-                    "Account validation failed due to an internal server error\n"
-                )
+            this.stream.log(
+                LogAct.ERROR, 
+                "Account validation failed due to an internal server error"
             );
 
             this.state.set(AuthState.RECOVER);
@@ -114,7 +110,7 @@ public class Register{
                 ValidateUsrRes.class
             );
         } catch (JsonProcessingException e) {
-            throw new IOException("Faile to parse response object.\n");
+            throw new IOException("Faile to parse response object.");
         }
 
         /*
@@ -125,13 +121,11 @@ public class Register{
         if (!payload.status){
             // Auth failed due to some user / environment related issue
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR, null,
-                    "Account validation failed due to user/environment issue {"
-                        + NetErrors.err.get(payload.error)
-                        + "}\n"
-                )
+            this.stream.log(
+                LogAct.ERROR, 
+                "Account validation failed due to user/environment issue {"
+                    + NetErrors.err.get(payload.error)
+                    + "}"
             );
             
             this.state.set(AuthState.RECOVER);
@@ -142,11 +136,9 @@ public class Register{
         this.user.auth_token = TokCipher.encrypt(payload.body.auth_tok);
         this.user.refresh_token = TokCipher.encrypt(payload.body.refresh_tok);
         
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Account validation completed with no issues.\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Account validation completed with no issues."
         );
     }
 
@@ -159,11 +151,9 @@ public class Register{
      */
     private void createUsr()
     throws InterruptedException, IOException{
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Initializing user account creation flow...\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Initializing user account creation flow..."
         );
 
         this.user.username = this.callbacks.username();
@@ -182,7 +172,7 @@ public class Register{
         try {
             res = this.server.post(message);
         } catch (IOException e) {
-            throw new IOException("Failed to contact server.\n");
+            throw new IOException("Failed to contact server.");
         }
 
         if (res.statusCode() >= 500){
@@ -194,11 +184,9 @@ public class Register{
             to return early.
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR, null,
-                    "Account creation failed due to an internal server error\n"
-                )
+            this.stream.log(
+                LogAct.ERROR, 
+                "Account creation failed due to an internal server error"
             );
 
             this.state.set(AuthState.TERMINATE);
@@ -214,13 +202,11 @@ public class Register{
             such cases, show the error message and prompt user to try again.
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR, null,
-                    "Account creation failed due to user/environment issue {"
-                        + NetErrors.err.get(payload.error)
-                        + "}\n"
-                )
+            this.stream.log(
+                LogAct.ERROR, 
+                "Account creation failed due to user/environment issue {"
+                    + NetErrors.err.get(payload.error)
+                    + "}"
             );
 
             this.state.set(AuthState.RETRY);
@@ -230,21 +216,17 @@ public class Register{
 
         this.user.user_id = payload.body.user_id;
         
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Account creation completed with no issues.\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Account creation completed with no issues."
         );
     }
 
     private void getCallbacks()
     throws IOException{
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Requesting account information for registration workflow...\n"
-            )
+        this.stream.log(
+            LogAct.INFO, 
+            "Requesting account information for registration workflow..."
         );
 
         CompletableFuture<Response> promise;
@@ -264,23 +246,14 @@ public class Register{
              * say, failed to get the required data.
              */
 
-            throw new IOException("Failed to request/fetch registration data.\n");
+            throw new IOException("Failed to request/fetch registration data.");
         }
 
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null,
-                "Received account information successfully.\n"
-            )
-        );
+        this.stream.log(LogAct.INFO, "Received account information successfully.");
     }
 
     public void run(){
-        this.stream.send(
-            new Message(
-                LogAct.INFO, null, "Initializing registration workflow...\n"
-            )
-        );
+        this.stream.log(LogAct.INFO, "Initializing registration workflow...");
         
         try{
             this.getCallbacks();
@@ -288,19 +261,16 @@ public class Register{
 
             this.createUsr();
 
-            if (this.state.get() == AuthState.SUCCESS)
-                this.validateUsr();
+            if (this.state.get() == AuthState.SUCCESS) this.validateUsr();
 
-            if (this.state.get() == AuthState.SUCCESS)
-                enroll.first();
+            if (this.state.get() == AuthState.SUCCESS) enroll.first();
 
-            if (this.state.get() == AuthState.SUCCESS)
-                this.user.logged_in = true;
+            if (this.state.get() == AuthState.SUCCESS) this.user.logged_in = true;
 
             else this.user.logged_in = false;
 
         } catch (IOException e){
-            this.stream.send(new Message(LogAct.ERROR, null, e.getMessage()));
+            this.stream.log(LogAct.ERROR, e.getMessage());
             this.state.set(AuthState.TERMINATE);
         } catch (InterruptedException e){
             /*
@@ -309,11 +279,9 @@ public class Register{
             is being shut down).
             */
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR, null,
-                    "Thread was interrupted while performing user registration\n"
-                )
+            this.stream.log(
+                LogAct.ERROR, 
+                "Thread was interrupted while performing user registration"
             );
 
             this.state.set(AuthState.TERMINATE);
@@ -323,23 +291,15 @@ public class Register{
              * with registration workflow. So, terminate the workflow and prompt user to try again.
              */
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR, null,
-                    "Failed to get account/device information for registration workflow\n"
-                )
+            this.stream.log(
+                LogAct.ERROR, 
+                "Failed to get account/device information for registration workflow"
             );
 
             this.state.set(AuthState.TERMINATE);
         } catch (Exception e) {
 
-            this.stream.send(
-                new Message(
-                    LogAct.ERROR, null,
-                    "Failed to save device information\n"
-                )
-            );
-
+            this.stream.log(LogAct.ERROR, "Failed to save device information");
             this.state.set(AuthState.TERMINATE);
         } finally{
             
@@ -353,11 +313,9 @@ public class Register{
 
                 this.user.logged_in = false;
 
-                this.stream.send(
-                    new Message(
-                        LogAct.ERROR, null,
-                        "User logged in temporarily after failure to persist user/device data.\n"
-                    )
+                this.stream.log(
+                    LogAct.ERROR, 
+                    "User logged in temporarily after failure to persist user/device data."
                 );
             }
         }
