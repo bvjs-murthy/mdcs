@@ -30,4 +30,40 @@ These are intended to be followed across the project, for any module.
 | 23 | TERMINATED | Execution was intentionally terminated. |
 | 24 | RESTART_REQUIRED | Operation cannot continue without restarting the component/process. |
 
+## IPC Message Structure
+Every standalone process should include an interface `Stream` for writing into stdout/stderr and 
+reading from stdin. The interface should not know about the implementation details or internals of 
+either parties.
+
+- Standalone mode: Stream <-> Console
+- Child process mode: Stream <-> Parent process
+
+The `Parent process` interprets message Service types (AUTH, UPDATE, etc.) and decides how to 
+fulfill them, but that decision is completely outside the `Child process`.
+
+### Request
+```text
+<ID> <Service> <Payload>
+[Header-count]
+<Key>: <Value>
+<Key>: <Value>
+...
+[Payload-length]
+<Payload>
+```
+
+### Response
+```text
+<ID> <Status> <Status-Code>
+[Header-count]
+<Key>: <Value>
+<Key>: <Value>
+...
+[Payload-length]
+<Payload>
+```
+
+> Payload-length specifies the number of bytes encoded in the payload, not number of characters. A 
+response with certain ID is expected to have a request with same ID, if not, it should be ignored.
+
 ---
