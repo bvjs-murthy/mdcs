@@ -4,11 +4,9 @@ import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.mdcs.core.Stream;
 import com.mdcs.core.Stream.AuthAct;
-import com.mdcs.core.Stream.LogAct;
 import com.mdcs.core.Stream.Message;
 import com.mdcs.core.Stream.Response;
 import com.mdcs.shared.fileio.FileIO;
@@ -31,7 +29,7 @@ public class Login{
     private void getCallbacks()
     throws IOException{
         this.stream.log(
-            LogAct.INFO, 
+            this, "INFO", 
             "Requesting account information for login workflow..."
         );
 
@@ -51,7 +49,7 @@ public class Login{
         }
 
         this.stream.log(
-            LogAct.INFO, 
+            this, "INFO", 
             "Received account information successfully."
         );
     }
@@ -82,7 +80,7 @@ public class Login{
             */
 
             this.stream.log(
-                LogAct.CRITICAL, 
+                this, "CRITICAL", 
                 "Login failed due to an internal server error."
             );
 
@@ -105,7 +103,7 @@ public class Login{
             */
 
             this.stream.log(
-                LogAct.CRITICAL, 
+                this, "CRITICAL", 
                 "Login failed due to user or environment issue."
             );
 
@@ -127,7 +125,7 @@ public class Login{
              */
 
             this.stream.log(
-                LogAct.INFO, 
+                this, "INFO", 
                 "User account is unverified. Triggering validation workflow..."
             );
 
@@ -150,7 +148,7 @@ public class Login{
              */
 
             this.stream.log(
-                LogAct.INFO, 
+                this, "INFO", 
                 "User account is verified. Triggering device enrollment workflow..."
             );
 
@@ -162,26 +160,23 @@ public class Login{
         this.user.auth_token = payload.body.auth_tok;
         this.user.refresh_token = payload.body.refresh_tok;
 
-        this.stream.log(
-            LogAct.INFO, 
-            "Login workflow completed with no issues."
-        );
+        this.stream.log(this, "INFO", "Login workflow completed with no issues.");
     }
 
     public void run(){
-        this.stream.log(LogAct.INFO, "Initiating login workflow...");
+        this.stream.log(this, "INFO", "Initiating login workflow...");
 
         try {
             this.getCallbacks();
             this.usrAuth();
         }
         catch (IOException e){
-            this.stream.log(LogAct.ERROR, e.getMessage());
+            this.stream.log(this, "ERROR", e.getMessage());
             this.state.set(AuthState.TERMINATE);
         } catch (InterruptedException e){
 
             this.stream.log(
-                LogAct.ERROR, 
+                this, "ERROR", 
                 "Thread was interrupted while performing user validation"
             );
 
@@ -189,7 +184,7 @@ public class Login{
         } catch (ExecutionException e){
 
             this.stream.log(
-                LogAct.ERROR, 
+                this, "ERROR", 
                 "User validation failed after failure to obtain OTP."
             );
 
@@ -206,7 +201,7 @@ public class Login{
                 this.user.logged_in = false;
 
                 this.stream.log(
-                    LogAct.ERROR, 
+                    this, "ERROR", 
                     "User logged in temporarily after failure to persist user/device data."
                 );
             }

@@ -9,7 +9,6 @@ import com.mdcs.shared.models.State.AuthState;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.mdcs.core.Stream;
 import com.mdcs.core.Stream.AuthAct;
-import com.mdcs.core.Stream.LogAct;
 import com.mdcs.core.Stream.Message;
 import com.mdcs.core.Stream.Response;
 import com.mdcs.shared.fileio.FileIO;
@@ -68,10 +67,7 @@ public class Register{
 
     protected void validateUsr()
     throws IOException, InterruptedException, ExecutionException{
-        this.stream.log(
-            LogAct.INFO, 
-            "Initializing user account validation flow..."
-        );
+        this.stream.log(this, "INFO", "Initializing user account validation flow...");
 
         String otp = this.stream.request(
             new Message(AuthAct.OTP, null, "")
@@ -94,7 +90,7 @@ public class Register{
             // recover from Unverified state
 
             this.stream.log(
-                LogAct.ERROR, 
+                this, "ERROR", 
                 "Account validation failed due to an internal server error"
             );
 
@@ -122,7 +118,7 @@ public class Register{
             // Auth failed due to some user / environment related issue
 
             this.stream.log(
-                LogAct.ERROR, 
+                this, "ERROR", 
                 "Account validation failed due to user/environment issue {"
                     + NetErrors.err.get(payload.error)
                     + "}"
@@ -137,7 +133,7 @@ public class Register{
         this.user.refresh_token = TokCipher.encrypt(payload.body.refresh_tok);
         
         this.stream.log(
-            LogAct.INFO, 
+            this, "INFO", 
             "Account validation completed with no issues."
         );
     }
@@ -151,10 +147,7 @@ public class Register{
      */
     private void createUsr()
     throws InterruptedException, IOException{
-        this.stream.log(
-            LogAct.INFO, 
-            "Initializing user account creation flow..."
-        );
+        this.stream.log(this, "INFO", "Initializing user account creation flow...");
 
         this.user.username = this.callbacks.username();
         this.user.email = this.callbacks.email();
@@ -185,7 +178,7 @@ public class Register{
             */
 
             this.stream.log(
-                LogAct.ERROR, 
+                this, "ERROR", 
                 "Account creation failed due to an internal server error"
             );
 
@@ -203,7 +196,7 @@ public class Register{
             */
 
             this.stream.log(
-                LogAct.ERROR, 
+                this, "ERROR", 
                 "Account creation failed due to user/environment issue {"
                     + NetErrors.err.get(payload.error)
                     + "}"
@@ -216,16 +209,13 @@ public class Register{
 
         this.user.user_id = payload.body.user_id;
         
-        this.stream.log(
-            LogAct.INFO, 
-            "Account creation completed with no issues."
-        );
+        this.stream.log(this, "INFO", "Account creation completed with no issues.");
     }
 
     private void getCallbacks()
     throws IOException{
         this.stream.log(
-            LogAct.INFO, 
+            this, "INFO", 
             "Requesting account information for registration workflow..."
         );
 
@@ -249,11 +239,11 @@ public class Register{
             throw new IOException("Failed to request/fetch registration data.");
         }
 
-        this.stream.log(LogAct.INFO, "Received account information successfully.");
+        this.stream.log(this, "INFO", "Received account information successfully.");
     }
 
     public void run(){
-        this.stream.log(LogAct.INFO, "Initializing registration workflow...");
+        this.stream.log(this, "INFO", "Initializing registration workflow...");
         
         try{
             this.getCallbacks();
@@ -270,7 +260,7 @@ public class Register{
             else this.user.logged_in = false;
 
         } catch (IOException e){
-            this.stream.log(LogAct.ERROR, e.getMessage());
+            this.stream.log(this, "ERROR", e.getMessage());
             this.state.set(AuthState.TERMINATE);
         } catch (InterruptedException e){
             /*
@@ -280,7 +270,7 @@ public class Register{
             */
 
             this.stream.log(
-                LogAct.ERROR, 
+                this, "ERROR", 
                 "Thread was interrupted while performing user registration"
             );
 
@@ -292,14 +282,14 @@ public class Register{
              */
 
             this.stream.log(
-                LogAct.ERROR, 
+                this, "ERROR", 
                 "Failed to get account/device information for registration workflow"
             );
 
             this.state.set(AuthState.TERMINATE);
         } catch (Exception e) {
 
-            this.stream.log(LogAct.ERROR, "Failed to save device information");
+            this.stream.log(this, "ERROR", "Failed to save device information");
             this.state.set(AuthState.TERMINATE);
         } finally{
             
@@ -314,7 +304,7 @@ public class Register{
                 this.user.logged_in = false;
 
                 this.stream.log(
-                    LogAct.ERROR, 
+                    this, "ERROR", 
                     "User logged in temporarily after failure to persist user/device data."
                 );
             }

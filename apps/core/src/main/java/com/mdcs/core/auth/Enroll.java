@@ -4,12 +4,10 @@ import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-
 import com.mdcs.shared.fileio.FileIO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.mdcs.core.Stream;
 import com.mdcs.core.Stream.AuthAct;
-import com.mdcs.core.Stream.LogAct;
 import com.mdcs.core.Stream.Message;
 import com.mdcs.core.Stream.Response;
 import com.mdcs.shared.fileio.DataClasses.Device;
@@ -35,7 +33,7 @@ public class Enroll{
     private void getCallbacks(AuthAct action)
     throws IOException{
         this.stream.log(
-            LogAct.INFO, 
+            this, "INFO", 
             "Requesting device & workspace information for enrollment workflow..."
         );
 
@@ -53,7 +51,7 @@ public class Enroll{
         }
 
         this.stream.log(
-            LogAct.INFO, 
+            this, "INFO", 
             "Received device & workspace information successfully."
         );
     }
@@ -74,7 +72,7 @@ public class Enroll{
             */
 
             this.stream.log(
-                LogAct.CRITICAL, 
+                this, "CRITICAL", 
                 "Device enrollment failed due to an internal server error."
             );
 
@@ -89,7 +87,7 @@ public class Enroll{
             // Device enrollment failed due to user / environment related issue
 
             this.stream.log(
-                LogAct.CRITICAL, 
+                this, "CRITICAL", 
                 "Device enrollment failed due to user or environment issue."
             );
             
@@ -101,7 +99,7 @@ public class Enroll{
         this.device.device_id = payload.body.device_id;
         this.device.workspace_id = payload.body.workspace_id;
 
-        this.stream.log(LogAct.INFO, log);
+        this.stream.log(this, "INFO", log);
         
         FileIO.fileWrite(this.device);
     }
@@ -114,14 +112,11 @@ public class Enroll{
      */
     public void first()
     throws InterruptedException{
-        this.stream.log(
-            LogAct.INFO, 
-            "Initiating first device enrollment..."
-        );
+        this.stream.log(this, "INFO", "Initiating first device enrollment...");
 
         try { this.getCallbacks(AuthAct.FIR_ENROLL); }
         catch (IOException e) {
-            this.stream.log(LogAct.ERROR, e.getMessage());
+            this.stream.log(this, "ERROR", e.getMessage());
             this.state.set(AuthState.TERMINATE);
 
             return;
@@ -136,7 +131,7 @@ public class Enroll{
         try {
             this.enroll(msg, "Device enrolled successfully and marked as primary.");
         } catch (IOException e) {
-            this.stream.log(LogAct.ERROR, e.getMessage());
+            this.stream.log(this, "ERROR", e.getMessage());
             this.state.set(AuthState.TERMINATE);
             
             return;
@@ -151,15 +146,12 @@ public class Enroll{
      */
     public void additional()
     throws InterruptedException{
-        this.stream.log(
-            LogAct.INFO, 
-            "Initiating additional device enrollment..."
-        );
+        this.stream.log(this, "INFO", "Initiating additional device enrollment...");
 
         try {
             this.getCallbacks(AuthAct.ADD_ENROLL);
         } catch (IOException e) {
-            this.stream.log(LogAct.ERROR, e.getMessage());
+            this.stream.log(this, "ERROR", e.getMessage());
             this.state.set(AuthState.TERMINATE);
 
             return;
@@ -178,7 +170,7 @@ public class Enroll{
         try {
             this.enroll(msg, "Device enrolled successfully under the workspace.");
         } catch (IOException e) {
-            this.stream.log(LogAct.ERROR, e.getMessage());
+            this.stream.log(this, "ERROR", e.getMessage());
             this.state.set(AuthState.TERMINATE);
             
             return;

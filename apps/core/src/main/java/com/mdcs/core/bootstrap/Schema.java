@@ -7,11 +7,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mdcs.core.Stream;
-import com.mdcs.core.Stream.LogAct;
 import com.mdcs.shared.fileio.FileIO;
 import com.mdcs.shared.fileio.DataClasses.*;
 import com.mdcs.shared.models.Report;
@@ -90,7 +88,7 @@ public class Schema implements Runnable{
                 ObjectNode node = (ObjectNode) raw;
 
                 if (!this.validSchema(template, node)){
-                    this.stream.log(LogAct.ERROR, "Invalid file schema for " + tem_name);
+                    this.stream.log(this, "ERROR", "Invalid file schema for " + tem_name);
 
                     try{
                         // node would be updated if schema is invalid. So we need to write those
@@ -99,13 +97,13 @@ public class Schema implements Runnable{
                         FileIO.writeJsonNode(template, node);
                         
                         this.stream.log(
-                            LogAct.ERROR, "Defaulted invalid file content for " + tem_name
+                            this, "ERROR", "Defaulted invalid file content for " + tem_name
                         );
                     } catch (Exception e){
                         // Failed to write file. Stop application startup
 
                         this.stream.log(
-                            LogAct.CRITICAL, 
+                            this, "CRITICAL", 
                             "Failed to default invalid file, " + tem_name
                         );
 
@@ -119,19 +117,19 @@ public class Schema implements Runnable{
                 // This could be caused due to user tinkering files or corrupted file write.
                 // Try backup restore first and then default file write if it fails
 
-                this.stream.log(LogAct.ERROR, "Invalid file format for " + tem_name);
+                this.stream.log(this, "ERROR", "Invalid file format for " + tem_name);
 
                 if (!recover(template)){
                     // Recovery failed. Create default files
                     
                     try{
                         FileIO.createAndWrite(template);
-                        this.stream.log(LogAct.INFO, "Created default file for " + tem_name);
+                        this.stream.log(this, "INFO", "Created default file for " + tem_name);
                     } catch (Exception f){
                         // Failed to write defaults. Stop application startup
 
                         this.stream.log(
-                            LogAct.CRITICAL, "Failed to recover/create " + tem_name + "."
+                            this, "CRITICAL", "Failed to recover/create " + tem_name + "."
                         );
 
                         this.report.setAppState(AppState.TERMINATE);
@@ -140,7 +138,7 @@ public class Schema implements Runnable{
                     }
                 } else{
                     // Backups recovered
-                    this.stream.log(LogAct.INFO, "Recovered backup for " + tem_name + ".");
+                    this.stream.log(this, "INFO", "Recovered backup for " + tem_name + ".");
                 }
             }
         }
@@ -190,7 +188,7 @@ public class Schema implements Runnable{
     
     @Override
     public void run(){
-        this.stream.log(LogAct.INFO, "Validating file system schema and format...");
+        this.stream.log(this, "INFO", "Validating file system schema and format...");
         
         // Makes sure directories exist already
         FileIO.createAppFileDirs();
@@ -206,7 +204,7 @@ public class Schema implements Runnable{
             */
 
             this.stream.log(
-                LogAct.CRITICAL, 
+                this, "CRITICAL", 
                 "Expected data field doesn't exist or can't be accessed in UNKNOWN file."
             );
 

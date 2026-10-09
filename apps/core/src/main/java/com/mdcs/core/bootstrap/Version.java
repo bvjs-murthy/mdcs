@@ -5,7 +5,6 @@ import java.net.http.HttpResponse;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-
 import com.mdcs.shared.models.Report;
 import com.mdcs.shared.models.Report.AppState;
 import com.mdcs.shared.models.bootstrap.Network;
@@ -13,7 +12,6 @@ import com.mdcs.shared.models.bootstrap.Network.UpdReq;
 import com.mdcs.shared.models.bootstrap.Network.UpdRes;
 import com.mdcs.shared.network.ProtoMet;
 import com.mdcs.core.Stream;
-import com.mdcs.core.Stream.LogAct;
 import com.mdcs.core.Stream.Message;
 import com.mdcs.core.Stream.UpdateAct;
 import com.mdcs.shared.fileio.DataClasses;
@@ -61,7 +59,7 @@ public class Version implements Runnable{
                 // Pass plugin name, currnt version, available version and continue to application
 
                 this.stream.log(
-                    LogAct.INFO, 
+                    this, "INFO", 
                     "Plugin update available " +
                         "[name=" + name + " current=" + curr_ver + " available=" + avail_ver + "]"
                 );
@@ -86,7 +84,7 @@ public class Version implements Runnable{
             => Terminate application startup. May change this later...
             */
 
-            this.stream.log(LogAct.ERROR, "Failed to persist plugin compatibility");
+            this.stream.log(this, "ERROR", "Failed to persist plugin compatibility");
             this.report.setAppState(AppState.TERMINATE);
         }
     }
@@ -113,7 +111,7 @@ public class Version implements Runnable{
             // Block the app startup and inform user
 
             this.stream.log(
-                LogAct.CRITICAL,
+                this, "CRITICAL",
                 "Critical update required [current=" + curr_ver + " available=" + avail_ver + "]"
                     + "; Application blocked."
             );
@@ -142,7 +140,7 @@ public class Version implements Runnable{
             // New update available => Notify user and continue app execution
 
             this.stream.log(
-                LogAct.INFO,
+                this, "INFO",
                 "Optional update available [current=" + curr_ver + " available=" + avail_ver + "]"
             );
 
@@ -196,7 +194,7 @@ public class Version implements Runnable{
             updates.
             */
 
-            this.stream.log(LogAct.ERROR, "Failed to persist plugin compatibility.");
+            this.stream.log(this, "ERROR", "Failed to persist plugin compatibility.");
             throw new RuntimeException();
 
         } catch (InterruptedException e){
@@ -206,7 +204,7 @@ public class Version implements Runnable{
             */
 
             this.stream.log(
-                LogAct.ERROR, "Failed to fetch version metadata; " + e.getMessage() + '.'
+                this, "ERROR", "Failed to fetch version metadata; " + e.getMessage() + '.'
             );
 
             Thread.currentThread().interrupt();
@@ -218,7 +216,7 @@ public class Version implements Runnable{
             */
 
             this.stream.log(
-                LogAct.ERROR, "Failed to fetch version metadata; " + e.getMessage() + '.'
+                this, "ERROR", "Failed to fetch version metadata; " + e.getMessage() + '.'
             );
 
             this.report.setAppState(AppState.TERMINATE);
@@ -239,7 +237,8 @@ public class Version implements Runnable{
                 // The version of this module is not in the valid form.
                 
                 this.stream.log(
-                    LogAct.ERROR, "Invalid version string for '" + key + "' {" + version + "}."
+                    this, "ERROR",
+                    "Invalid version string for '" + key + "' {" + version + "}."
                 );
 
                 return false;
@@ -252,7 +251,7 @@ public class Version implements Runnable{
     @Override
     public void run(){
         this.stream.log(
-            LogAct.INFO, 
+            this, "INFO", 
             "Initializing installed version verification and checking for updates..."
         );
 

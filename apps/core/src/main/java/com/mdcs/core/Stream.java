@@ -1,23 +1,13 @@
 package com.mdcs.core;
 
-/*
- * The Core never performs console I/O directly and never knows whether it is running standalone
- * or as a child process. It simply sends and receives typed messages through this stream.
- *
- * Standalone mode: Stream <-> Console
- * Child process mode: Core <-> IPC Pipe <-> Manager
- *
- * The Manager interprets message Service types (LOG, AUTH, UPDATE, etc.) and decides how to
- * fulfill them, but that decision is completely outside the Core. Therefore, message types
- * represent services/capabilities requested by the Core, not UI actions. The Core only tells what
- * it needs, while the Manager decides how to work on the request.
- */
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingDeque;
@@ -25,36 +15,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicInteger;
-
-/*
- * Request structure [format to send to manager]:
- *     <ID> <SERVICE> <ACTION>
- *     [Header-Count]
- *     <Key>: <Value>
- *     ...
- *     [Length]
- *     <Payload>
- *
- * Response structure [format expected to receive from manager]:
- *     <ID> <STATUS> <STATUS_CODE>
- *     [Header-Count]
- *     <Key>: <Value>
- *     ...
- *     [Length]
- *     <Payload>
- *
- * Payload-Length specifies the number of bytes encoded in the payload, not number of characters.
- * A response with certain ID is expected to have a request with same ID, if not, it will be
- * ignored.
- */
-
-/**
- * Includes methods to read and write from/into: stdin, stdour, stderr
- * 
- * When launched as a child process, writes/reads into/from the IPC pipe. And when launched as an
- * independent process, it writes or reads from console - Which is automatic, no need to handle
- * separately.
- */
 
 public class Stream {
     private BlockingDeque<Message> oque;
@@ -71,10 +31,6 @@ public class Stream {
         /**
          * Reads/watches the stdin pipe continuosly. Parses the message string based on the format
          * and completes the promise.
-         * 
-         * If there is no related promise pending, it simply ignores them. This is expected and not
-         * any limitation. This is because, a response from Manager should follow a request from
-         * Core.
         */
         private static class In implements Runnable {
             private final BufferedInputStream istream;
@@ -155,6 +111,7 @@ public class Stream {
                     /**
                      * This exception could have been occured due to either parsing of the response
                      * or due to pipeline being closed (EOFException) else, invalid integer format.
+                     * 
                      * In any of the cases, they are protocol level issues. And the process bound
                      * to the requests can't proceed further safely. So mark them complete
                      * exceptionally and clear the promises map. The parent process is expected to
@@ -221,13 +178,13 @@ public class Stream {
             public void run(){
 
                 try{
+
                     while (true){
                         String msg = eque.take();
 
                         this.estream.write(msg.getBytes(StandardCharsets.UTF_8));
                         estream.flush();
                     }
-
                 } catch(InterruptedException e){
                     this.ipc.fail();
                     Thread.currentThread().interrupt();
@@ -280,7 +237,7 @@ public class Stream {
      * in the domain of a service must be ignored.
      */
     public enum Service{
-        AUTH, LOG, UPDATE
+        AUTH, UPDATE
     }
 
     public interface Action{ Service service(); }
@@ -290,13 +247,6 @@ public class Stream {
 
         @Override
         public Service service(){ return Service.AUTH; }
-    }
-
-    public enum LogAct implements Action{
-        INFO, WARN, ERROR, CRITICAL;
-
-        @Override
-        public Service service(){ return Service.LOG; }
     }
 
     public enum UpdateAct implements Action{
@@ -389,7 +339,7 @@ public class Stream {
             Action action,
             Map<String, String> headers,
             String payload
-        ){
+        ) throws IllegalArgumentException {
 
             if (action == null)
                 throw new IllegalArgumentException("Action/Service cannot be null");
@@ -401,6 +351,37 @@ public class Stream {
             this.payload = payload;
 
             this.build();
+        }
+    }
+
+    public static class Log{
+        private static final DateTimeFormatter F = DateTimeFormatter.ofPattern(
+            "yyyy-MM-dd HH:mm:ss.SSS"
+        ).withZone(ZoneId.systemDefault());
+
+        private final long timestamp = System.currentTimeMillis();
+        private String level;
+        private final String producer;
+        private String msg;
+
+        public String get(){
+            String ts = F.format(Instant.ofEpochMilli(this.timestamp));
+
+            return "[ " + ts + " ][ " + this.level + " ] " + this.producer + ": " + this.msg;
+        }
+
+        public Log(Object producer, String level, String msg)
+        throws IllegalArgumentException {
+
+            if (producer == null)
+                throw new IllegalArgumentException("Producer cannot be null");
+
+            if (level == null || level.isBlank())
+                throw new IllegalArgumentException("Log level cannot be null or empty");
+
+            this.producer = producer.getClass().getSimpleName().toUpperCase();
+            this.level = level.toUpperCase();
+            this.msg = msg;
         }
     }
 
@@ -442,10 +423,13 @@ public class Stream {
         return promise;
     }
 
-    public void log(LogAct level, String msg){
+    public void log(Object producer, String level, String msg){
 
-        try { this.eque.put("[" + level + "] " + msg + "\n"); }
-        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        try {
+            this.eque.put(new Log(producer, level, msg).get());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
     
     public Stream(){

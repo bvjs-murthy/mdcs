@@ -1,10 +1,8 @@
 package com.mdcs.core.bootstrap;
 
 import java.io.IOException;
-
 import com.mdcs.shared.fileio.FileIO;
 import com.mdcs.core.Stream;
-import com.mdcs.core.Stream.LogAct;
 import com.mdcs.shared.fileio.DataClasses.Accounts;
 
 /*
@@ -71,7 +69,7 @@ public class UserState {
 
     public String resolve(){
         String usr_state = this.state();
-        this.stream.log(LogAct.INFO, "Resolved user state to " + usr_state + ".");
+        this.stream.log(this, "INFO", "Resolved user state to " + usr_state + ".");
         
         return usr_state;
     }
