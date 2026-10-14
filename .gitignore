@@ -1,4 +1,4 @@
-secrets.json
+.store/
 .vscode/
 target/
 .env
