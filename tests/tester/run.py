@@ -5,8 +5,8 @@ Entry point: argument parsing and config loading.
 """
 
 import json, os, sys
-from tests.tester.cli import fail
-from tests.tester.utils import read_text
+from cli import fail
+from utils import read_text
 from suite import SuiteRunner
 
 USAGE = """usage: runner.py [-h] [-v] json_path

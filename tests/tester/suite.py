@@ -5,11 +5,11 @@ application under test, and reporting results.
 
 import json, os, subprocess, time
 
-from tests.tester.chks import evaluate_assertions, http_check
-from tests.tester.cli import ok, fail, warn, info, dim
-from ipc import CoreIPC
+from chks import evaluate_assertions, http_check
+from cli import ok, fail, warn, info, dim
+from ipc import IPC
 
-from tests.tester.utils import (
+from utils import (
     command_from, make_temp_dir, remove_tree, render, run_command,
     wait_for_port, write_text,
 )
@@ -25,10 +25,17 @@ EXIT_CODES = {
     24: "RESTART_REQUIRED",
 }
 
-
 class TestResult:
-    def __init__(self, name, passed, elapsed, actual_exit=None,
-                 expected_exit=None, exit_meaning="UNKNOWN", errors=None):
+    def __init__(
+        self,
+        name,
+        passed,
+        elapsed,
+        actual_exit=None,
+        expected_exit=None,
+        exit_meaning="UNKNOWN",
+        errors=None
+    ):
         self.name = name
         self.passed = passed
         self.elapsed = elapsed
@@ -36,7 +43,6 @@ class TestResult:
         self.expected_exit = expected_exit
         self.exit_meaning = exit_meaning
         self.errors = errors if errors is not None else []
-
 
 class SuiteRunner:
 
@@ -85,18 +91,16 @@ class SuiteRunner:
             if pre.get("wait"): time.sleep(float(pre["wait"]))
 
     def stop_prerequisites(self):
+
         if self.ser_proc is not None and self.ser_proc.poll() is None:
             self.ser_proc.terminate()
-            try:
-                self.ser_proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                self.ser_proc.kill()
+
+            try: self.ser_proc.wait(timeout=3)
+            except subprocess.TimeoutExpired: self.ser_proc.kill()
 
         if self.ser_log_han is not None:
             self.ser_log_han.close()
             self.ser_log_han = None
-
-    # ---- single case -----------------------------------------------------
 
     def run_case(self, case):
         name = case["name"]
@@ -165,7 +169,7 @@ class SuiteRunner:
                     inp = case.get("input", {})
                     responses = inp.get("responses", {}) if isinstance(inp, dict) else {}
 
-                    ipc = CoreIPC(process, log_file, responses)
+                    ipc = IPC(process, log_file, responses)
                     ipc.start()
 
                     try: process.wait(timeout=timeout)
@@ -179,7 +183,6 @@ class SuiteRunner:
                     ipc.join(1)
 
                     errors.extend(f"IPC: {x}" for x in ipc.protocol_errors)
-
                     actual_exit = process.returncode
 
                     if expected_exit is not None and actual_exit != int(expected_exit):
@@ -191,17 +194,19 @@ class SuiteRunner:
 
                     errors.extend(evaluate_assertions(
                         expected.get("assert", {}),
-                        self.root, case_dir, app_data, ipc.events))
+                        self.root, case_dir, app_data, ipc.events)
+                    )
             else:
                 write_text(
                     log_path,
                     f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
-                    "[HARNESS] process execution disabled; HTTP/server checks only.\n")
+                    "[HARNESS] process execution disabled; HTTP/server checks only.\n"
+                )
 
             for check in case.get("server_checks", []):
                 passed, message = http_check(check, self.root, case_dir, app_data)
-                if not passed:
-                    errors.append(f"server: {message}")
+
+                if not passed: errors.append(f"server: {message}")
 
             for cleanup in case.get("cleanup", []):
                 run_command(cleanup, self.root, case_dir, app_data, check=True)
@@ -210,9 +215,11 @@ class SuiteRunner:
             errors.append(f"harness error: {type(exc).__name__}: {exc}")
 
         finally:
+
             if process is not None and process.poll() is None:
                 process.kill()
                 process.wait()
+
             remove_tree(case_dir)
 
         elapsed = time.perf_counter() - start
@@ -251,17 +258,20 @@ class SuiteRunner:
                 self.results.append(result)
 
                 if result.passed:
-                    print(" " + ok("PASS") + f"  {result.elapsed:.3f}s"
-                          f"  exit={result.actual_exit} {result.exit_meaning}")
+                    print(
+                        " " + ok("PASS") + f"  {result.elapsed:.3f}s"
+                        f"  exit={result.actual_exit} {result.exit_meaning}"
+                    )
+
                 else:
                     print(" " + fail("FAIL") + f"  {result.elapsed:.3f}s")
-                    for error in result.errors:
-                        print("       " + fail("↳ " + error))
+
+                    for error in result.errors: print("       " + fail("↳ " + error))
 
                 if self.verbose:
                     print("       " + dim("log: " + os.path.join(self.result_dir, f"{case['name']}.log")))
-        finally:
-            self.stop_prerequisites()
+        
+        finally: self.stop_prerequisites()
 
         return self._report(suite_name)
 
@@ -271,12 +281,15 @@ class SuiteRunner:
         total_time = sum(r.elapsed for r in self.results)
 
         print(dim("─" * 72))
-        print(f"Tests: {len(self.results)}   " + ok(f"Passed: {passed}") + "   "
-              + (fail(f"Failed: {failed}") if failed else f"Failed: {failed}")
-              + f"   Time: {total_time:.3f}s")
+        print(
+            f"Tests: {len(self.results)}   " + ok(f"Passed: {passed}") + "   "
+            + (fail(f"Failed: {failed}") if failed else f"Failed: {failed}")
+            + f"   Time: {total_time:.3f}s"
+        )
 
         summary_path = os.path.join(self.result_dir, "summary.json")
         os.makedirs(self.result_dir, exist_ok=True)
+        
         write_text(summary_path, json.dumps({
             "suite": suite_name,
             "passed": passed,

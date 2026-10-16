@@ -3,21 +3,9 @@ Small stdlib replacements and shared helpers:
 command splitting, temp dirs, file IO, placeholder rendering, running commands.
 """
 
-import os
-import socket
-import subprocess
-import time
-
-
-# --------------------------------------------------------------------------
-# Command parsing / execution
-# --------------------------------------------------------------------------
+import os, socket, subprocess, time
 
 def split_command(text):
-    """
-    Minimal shlex.split replacement (quotes + backslash escapes, no shell).
-    """
-
     args, cur, quote, has_token, i = [], [], None, False, 0
 
     while i < len(text):
@@ -110,21 +98,18 @@ def run_command(spec, root, case_dir, app_data, check=True):
 
 def wait_for_port(host, port, timeout):
     deadline = time.monotonic() + timeout
+
     while time.monotonic() < deadline:
+
         try:
             with socket.create_connection((host, port), timeout=0.4):
                 return
-        except OSError:
-            time.sleep(0.15)
+            
+        except OSError: time.sleep(0.15)
+
     raise TimeoutError(f"{host}:{port} did not become ready in {timeout:.1f}s")
 
-
-# --------------------------------------------------------------------------
-# Filesystem
-# --------------------------------------------------------------------------
-
 _tmp_counter = 0
-
 
 def make_temp_dir(prefix):
     global _tmp_counter
@@ -142,32 +127,38 @@ def make_temp_dir(prefix):
         except FileExistsError: continue
 
 def remove_tree(path):
-    """shutil.rmtree(ignore_errors=True) replacement."""
-    if not os.path.lexists(path):
-        return
+
+    if not os.path.lexists(path): return
+
     if os.path.islink(path) or not os.path.isdir(path):
+
         try: os.remove(path)
         except OSError: pass
+
         return
+    
     for dirpath, dirnames, filenames in os.walk(path, topdown=False):
+
         for name in filenames:
             try: os.remove(os.path.join(dirpath, name))
             except OSError: pass
+
         for name in dirnames:
             full = os.path.join(dirpath, name)
+
             try:
                 if os.path.islink(full): os.remove(full)
                 else: os.rmdir(full)
+
             except OSError: pass
+
     try: os.rmdir(path)
     except OSError: pass
 
-
 def read_text(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
 
+    with open(path, "r", encoding="utf-8") as f: return f.read()
 
 def write_text(path, text):
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
+
+    with open(path, "w", encoding="utf-8") as f: f.write(text)

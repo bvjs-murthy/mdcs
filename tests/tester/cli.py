@@ -1,11 +1,4 @@
-"""
-Terminal color helpers (plain ANSI instead of colorama).
-
-Colors are only emitted when stdout is a TTY and NO_COLOR is not set.
-"""
-
-import os
-import sys
+import os, sys
 
 if sys.stdout.isatty() and not os.environ.get("NO_COLOR"):
 
