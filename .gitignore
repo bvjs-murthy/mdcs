@@ -1,6 +1,11 @@
-.store/
+# Development env related meta
 .vscode/
+
+# Build or auxl
+.store
 target/
-.env
 bin/
+
+# Creds or dev related
+.env
 disk/

@@ -1,0 +1,6 @@
+# Automatically detect text files and use LF
+* text=auto eol=lf
+
+# Windows scripts can use CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
