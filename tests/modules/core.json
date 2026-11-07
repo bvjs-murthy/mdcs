@@ -1,0 +1,748 @@
+{
+    "test_name": "MDCS Core + Server \u2014 black-box integration suite",
+    "application": {
+        "path": "./apps/core/target/classes",
+        "command": [
+            "java",
+            "-cp",
+            "{application}{sep}{root}/shared/target/classes{sep}{root}/apps/core/target/dependency/*",
+            "com.mdcs.core.Main"
+        ],
+        "cwd": "{root}"
+    },
+    "timeout": 20,
+    "prerequisites": [
+        {
+            "name": "build Core and copy runtime dependencies",
+            "persistent": false,
+            "command": [
+                "mvn",
+                "-q",
+                "-pl",
+                "apps/core",
+                "-am",
+                "compile"
+            ],
+            "cwd": "{root}"
+        },
+        {
+            "name": "copy Core runtime dependencies",
+            "persistent": false,
+            "command": [
+                "mvn",
+                "-q",
+                "-pl",
+                "apps/core",
+                "dependency:copy-dependencies",
+                "-DincludeScope=runtime",
+                "-DoutputDirectory=target/dependency"
+            ],
+            "cwd": "{root}"
+        },
+        {
+            "name": "MDCS server",
+            "persistent": true,
+            "command": [
+                "go",
+                "run",
+                "."
+            ],
+            "cwd": "{root}/server",
+            "ready": {
+                "type": "port",
+                "host": "127.0.0.1",
+                "port": 1800,
+                "timeout": 15
+            }
+        }
+    ],
+    "cases": [
+        {
+            "name": "no_command",
+            "args": [],
+            "expected": {
+                "exit_code": 2
+            }
+        },
+        {
+            "name": "unknown_command",
+            "args": [
+                "unknown"
+            ],
+            "expected": {
+                "exit_code": 2
+            },
+            "notes": "Should be BAD_REQUEST; exposes default fall-through if still present."
+        },
+        {
+            "name": "flow_extra_argument",
+            "args": [
+                "flow",
+                "extra"
+            ],
+            "expected": {
+                "exit_code": 2
+            }
+        },
+        {
+            "name": "bootstrap_extra_argument",
+            "args": [
+                "bootstrap",
+                "extra"
+            ],
+            "expected": {
+                "exit_code": 2
+            }
+        },
+        {
+            "name": "auth_missing_option",
+            "args": [
+                "auth"
+            ],
+            "expected": {
+                "exit_code": 2
+            }
+        },
+        {
+            "name": "auth_extra_argument",
+            "args": [
+                "auth",
+                "login",
+                "extra"
+            ],
+            "expected": {
+                "exit_code": 2
+            }
+        },
+        {
+            "name": "auth_unknown_option",
+            "args": [
+                "auth",
+                "unknown"
+            ],
+            "expected": {
+                "exit_code": 2
+            }
+        },
+        {
+            "name": "enroll_missing_option",
+            "args": [
+                "enroll"
+            ],
+            "expected": {
+                "exit_code": 2
+            }
+        },
+        {
+            "name": "enroll_extra_argument",
+            "args": [
+                "enroll",
+                "first",
+                "extra"
+            ],
+            "expected": {
+                "exit_code": 2
+            }
+        },
+        {
+            "name": "enroll_unknown_option",
+            "args": [
+                "enroll",
+                "unknown"
+            ],
+            "expected": {
+                "exit_code": 2
+            }
+        },
+        {
+            "name": "enroll_genkey",
+            "args": [
+                "enroll",
+                "genkey"
+            ],
+            "status": "wip",
+            "notes": "Client and server implementation are not complete yet."
+        },
+        {
+            "name": "enroll_additional_server_handler",
+            "args": [
+                "enroll",
+                "additional"
+            ],
+            "status": "wip",
+            "notes": "Server addEnroll handler is currently unimplemented."
+        },
+        {
+            "name": "bootstrap_clean_environment",
+            "args": [
+                "bootstrap"
+            ],
+            "expected": {
+                "exit_code": 0,
+                "assert": {
+                    "files": [
+                        {
+                            "path": "{app_data}/entities/Accounts.json",
+                            "exists": true
+                        },
+                        {
+                            "path": "{app_data}/entities/Device.json",
+                            "exists": true
+                        },
+                        {
+                            "path": "{app_data}/application/Configs.json",
+                            "exists": true
+                        },
+                        {
+                            "path": "{app_data}/application/ModulePaths.json",
+                            "exists": true
+                        },
+                        {
+                            "path": "{app_data}/application/Data.json",
+                            "exists": true
+                        },
+                        {
+                            "path": "{app_data}/plugins/Plugin.json",
+                            "exists": true
+                        },
+                        {
+                            "path": "{app_data}/secrets/Cikey.key",
+                            "exists": true
+                        }
+                    ],
+                    "ipc": [
+                        {
+                            "service": "LOG",
+                            "action": "INFO",
+                            "payload_contains": "Initiating application bootstrap"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "bootstrap_invalid_accounts_json",
+            "args": [
+                "bootstrap"
+            ],
+            "expected": {
+                "exit_code": 0,
+                "assert": {
+                    "files": [
+                        {
+                            "path": "{app_data}/entities/Accounts.json",
+                            "exists": true
+                        }
+                    ]
+                }
+            },
+            "setup": [
+                {
+                    "command": [
+                        "python3",
+                        "-c",
+                        "from pathlib import Path; p=Path(r'{app_data}/entities/Accounts.json'); p.parent.mkdir(parents=True,exist_ok=True); p.write_text('{ hello',encoding='utf-8')"
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "bootstrap_invalid_version_format",
+            "args": [
+                "bootstrap"
+            ],
+            "expected": {
+                "exit_code": 23
+            },
+            "notes": "Requires versions.properties fixture to be injected before launch; see runner README."
+        },
+        {
+            "name": "flow_logged_out_select_login",
+            "args": [
+                "flow"
+            ],
+            "expected": {
+                "exit_code": 24,
+                "assert": {
+                    "ipc": [
+                        {
+                            "service": "LOG",
+                            "action": "INFO",
+                            "payload_contains": "Resolved user state to LOGGED_OUT"
+                        }
+                    ]
+                }
+            },
+            "setup": [
+                {
+                    "command": [
+                        "python3",
+                        "-c",
+                        "import json; from pathlib import Path; p=Path(r'{app_data}/entities/Device.json'); p.parent.mkdir(parents=True,exist_ok=True); json.dump({'device_id':'00000000-0000-0000-0000-000000000001','device_name':'test-device','workspace_id':'00000000-0000-0000-0000-000000000002','workspace_name':'test-workspace'},p.open('w'),indent=2)"
+                    ]
+                }
+            ],
+            "input": {
+                "responses": {
+                    "AUTH_CHOICE": "login",
+                    "LOGIN": {
+                        "email": "does-not-exist@example.com",
+                        "pswd": "WrongPass1!",
+                        "extra": "ignored"
+                    }
+                }
+            },
+            "notes": "Current App maps AuthState.RETRY to exit 24. Revisit when final exit mapping is stabilized."
+        },
+        {
+            "name": "auth_login_invalid_credentials",
+            "args": [
+                "auth",
+                "login"
+            ],
+            "expected": {
+                "exit_code": 24
+            },
+            "setup": [
+                {
+                    "command": [
+                        "python3",
+                        "-c",
+                        "import json; from pathlib import Path; p=Path(r'{app_data}/entities/Device.json'); p.parent.mkdir(parents=True,exist_ok=True); json.dump({'device_id':'00000000-0000-0000-0000-000000000001','device_name':'test-device','workspace_id':'00000000-0000-0000-0000-000000000002','workspace_name':'test-workspace'},p.open('w'),indent=2)"
+                    ]
+                }
+            ],
+            "input": {
+                "responses": {
+                    "LOGIN": {
+                        "email": "does-not-exist@example.com",
+                        "pswd": "WrongPass1!"
+                    }
+                }
+            }
+        },
+        {
+            "name": "auth_register_short_password",
+            "args": [
+                "auth",
+                "register"
+            ],
+            "expected": {
+                "exit_code": 24
+            },
+            "input": {
+                "responses": {
+                    "REGISTER": {
+                        "username": "test-user",
+                        "email": "test@example.com",
+                        "pswd": "weak"
+                    }
+                }
+            }
+        },
+        {
+            "name": "enroll_first_no_user",
+            "args": [
+                "enroll",
+                "first"
+            ],
+            "expected": {
+                "exit_code": 23
+            },
+            "input": {
+                "responses": {
+                    "FIR_ENROLL": {
+                        "device_name": "test-device",
+                        "workspace_name": "test-workspace"
+                    }
+                }
+            }
+        },
+        {
+            "name": "server_ping",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "GET",
+                    "url": "http://127.0.0.1:1800/mdcs/ping",
+                    "expect": {
+                        "status": 200,
+                        "contains": "Hello, there!"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_signup_malformed_json",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/signup",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "INVALID_DATA"
+                        }
+                    },
+                    "raw_body": "{ hello"
+                }
+            ]
+        },
+        {
+            "name": "server_signup_short_password",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/signup",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "SHORT_PASSWORD"
+                        }
+                    },
+                    "body": {
+                        "username": "test",
+                        "email": "test@example.com",
+                        "password": "A1!"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_signup_missing_uppercase",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/signup",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "MISSING_UPPERCASE"
+                        }
+                    },
+                    "body": {
+                        "username": "test",
+                        "email": "test@example.com",
+                        "password": "lower1!"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_signup_missing_lowercase",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/signup",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "MISSING_LOWERCASE"
+                        }
+                    },
+                    "body": {
+                        "username": "test",
+                        "email": "test@example.com",
+                        "password": "UPPER1!"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_signup_missing_digit",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/signup",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "MISSING_DIGIT"
+                        }
+                    },
+                    "body": {
+                        "username": "test",
+                        "email": "test@example.com",
+                        "password": "Upperlower!"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_signup_missing_special",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/signup",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "MISSING_SPECIAL"
+                        }
+                    },
+                    "body": {
+                        "username": "test",
+                        "email": "test@example.com",
+                        "password": "Upperlower1"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_signup_invalid_email",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/signup",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "INVALID_EMAIL"
+                        }
+                    },
+                    "body": {
+                        "username": "test",
+                        "email": "not-an-email",
+                        "password": "Upper1!"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_verify_missing_data",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/verify-otp",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "INVALID_DATA"
+                        }
+                    },
+                    "body": {
+                        "user_id": "",
+                        "email": "",
+                        "otp": ""
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_verify_malformed_json",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/verify-otp",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "INVALID_DATA"
+                        }
+                    },
+                    "raw_body": "{ hello"
+                }
+            ]
+        },
+        {
+            "name": "server_first_enroll_missing_data",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/first-enroll",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "INVALID_DATA"
+                        }
+                    },
+                    "body": {
+                        "user_id": "",
+                        "device_name": "",
+                        "workspace_name": ""
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_additional_enroll_missing_pairing_key",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/additional-enroll",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "INVALID_DATA"
+                        }
+                    },
+                    "body": {
+                        "user_id": "x",
+                        "device_name": "d",
+                        "workspace_name": "w",
+                        "pairing_key": ""
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_login_missing_data",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/auth/user/login",
+                    "expect": {
+                        "status": 200,
+                        "json": {
+                            "status": false,
+                            "error": "MISSING_DATA"
+                        }
+                    },
+                    "body": {
+                        "email": "",
+                        "password": "",
+                        "workspace_id": "",
+                        "device_id": ""
+                    }
+                }
+            ]
+        },
+        {
+            "name": "server_version_malformed_json",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/version/check",
+                    "expect": {
+                        "status": 200,
+                        "contains": ""
+                    },
+                    "raw_body": "{ hello"
+                }
+            ]
+        },
+        {
+            "name": "server_version_empty_request",
+            "process": false,
+            "server_checks": [
+                {
+                    "method": "POST",
+                    "url": "http://127.0.0.1:1800/mdcs/version/check",
+                    "expect": {
+                        "status": 200
+                    },
+                    "body": {}
+                }
+            ]
+        },
+        {
+            "name": "register_duplicate_user",
+            "status": "wip",
+            "notes": "Requires a disposable PostgreSQL fixture containing the user."
+        },
+        {
+            "name": "register_otp_expired",
+            "status": "wip",
+            "notes": "Requires deterministic OTP insertion/time fixture."
+        },
+        {
+            "name": "register_incorrect_otp",
+            "status": "wip",
+            "notes": "Requires deterministic OTP fixture."
+        },
+        {
+            "name": "register_otp_not_found",
+            "status": "wip",
+            "notes": "Requires a user with no OTP row."
+        },
+        {
+            "name": "first_enroll_unverified_user",
+            "status": "wip",
+            "notes": "Requires DB fixture with phase=UNVERIFIED."
+        },
+        {
+            "name": "first_enroll_onboarded_user",
+            "status": "wip",
+            "notes": "Requires DB fixture with phase=ONBOARDED."
+        },
+        {
+            "name": "first_enroll_duplicate_workspace",
+            "status": "wip",
+            "notes": "Requires DB fixture with an existing workspace name."
+        },
+        {
+            "name": "first_enroll_duplicate_device",
+            "status": "wip",
+            "notes": "Requires DB fixture with an existing device name."
+        },
+        {
+            "name": "login_unverified_user",
+            "status": "wip",
+            "notes": "Requires DB + deterministic OTP fixture."
+        },
+        {
+            "name": "login_verified_user",
+            "status": "wip",
+            "notes": "Requires DB fixture with phase=VERIFIED and manager enrollment response."
+        },
+        {
+            "name": "login_onboarded_user",
+            "status": "wip",
+            "notes": "Requires DB fixture with phase=ONBOARDED."
+        },
+        {
+            "name": "server_db_unavailable",
+            "status": "wip",
+            "notes": "Requires starting server with a deliberately invalid DB_CONNECTION_STR."
+        },
+        {
+            "name": "server_metadata_unavailable",
+            "status": "wip",
+            "notes": "Requires starting server with a deliberately invalid VERSION_DATA_URL."
+        },
+        {
+            "name": "bootstrap_optional_update",
+            "status": "wip",
+            "notes": "Requires controlled version metadata response."
+        },
+        {
+            "name": "bootstrap_critical_update",
+            "status": "wip",
+            "notes": "Requires controlled version metadata response."
+        },
+        {
+            "name": "bootstrap_plugin_update",
+            "status": "wip",
+            "notes": "Requires controlled version metadata response."
+        },
+        {
+            "name": "bootstrap_plugin_incompatible",
+            "status": "wip",
+            "notes": "Requires controlled version metadata response."
+        }
+    ]
+}

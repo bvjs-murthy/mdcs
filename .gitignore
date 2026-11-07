@@ -3,6 +3,7 @@
 
 # Build or auxl
 .store
+__pycache__/
 target/
 bin/
 
