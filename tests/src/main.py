@@ -1,53 +1,44 @@
-"""
-MDCS black-box integration / system test runner.
-
-Entry point: argument parsing and config loading.
-"""
-
 import json, os, sys
-from tools.tests.tester.cli import fail
-from tools.tests.tester.utils import read_text
-from tools.tests.tester.suite import Suite
+from utils import read_text, log
+from suite import Suite
 
-USAGE = """
+USAGE = """Run MDCS module as a black-box integration/system test suite.
+
 usage: runner.py [-h] [-v] json_path
 
-Run MDCS module as a black-box integration/system test suite.
-
-positional arguments:
+positional args:
     json_path      path to the test-suite JSON file
 
 options:
     -h, --help     show this help message and exit
-    -v, --verbose  print generated log paths
 """
 
-def pargs(argv: list):
-    verbose, json_path, onlypos = False, None, False
+def pargs(argv: list) -> str:
+    json_path, onlypos = None, False
 
     for arg in argv:
-
+        # For every arg, check if it is an option. If it is not any expected option, consider it
+        # to be the json_path.
+        
         if not onlypos and arg == "--": onlypos = True
 
         elif not onlypos and arg in ("-h", "--help"):
-            print(USAGE)
+            sys.stdout.write(USAGE)
             raise SystemExit(0)
-        
-        elif not onlypos and arg in ("-v", "--verbose"): verbose = True
 
         elif not onlypos and arg.startswith("-") and arg != "-":
-            raise ValueError(f"unrecognized argument: {arg}")
+            raise ValueError(f"Unrecognized argument: {arg}")
         
         elif json_path is None: json_path = arg
 
-        else: raise ValueError(f"unexpected extra argument: {arg}")
+        else: raise ValueError(f"Unexpected extra argument: {arg}")
         
     if json_path is None:
-        raise ValueError("the following arguments are required: json_path")
+        raise ValueError("The following arguments are required: json_path")
     
-    return json_path, verbose
+    return json_path
 
-def load_config(path: str):
+def load_config(path: str) -> dict:
     data = json.loads(read_text(path))
 
     if isinstance(data, list):
@@ -64,22 +55,22 @@ def load_config(path: str):
 
 def main():
 
-    try: json_path, verbose = pargs(sys.argv[1:])
+    try: json_path = pargs(sys.argv[1:])
 
-    except ValueError as exc: 
-        sys.stderr.write(USAGE + f"error: {exc}\n")
+    except ValueError as exc:
+        log("Critical", exc)
         return 2
 
     path = os.path.realpath(json_path)
 
     if not os.path.exists(path):
-        print(fail(f"Test file not found: {path}"), file=sys.stderr)
+        log("Critical", f"Test file not found: {path}\n")
         return 2
 
-    try: return Suite(load_config(path), path, verbose).run()
+    try: return Suite(config=load_config(path), conf_path=path).run()
 
     except Exception as e:
-        print(fail(f"Test runner failed: {type(e).__name__}: {e}"), file=sys.stderr)
+        log("Critical", f"Failed to run test suite: {e}\n")
         return 2
 
 if __name__ == "__main__": raise SystemExit(main())

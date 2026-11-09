@@ -1,8 +1,9 @@
 """
-MDCS Stream protocol: reads module's requests from stdout, answers requests on stdin using canned
-responses from the test case.
+Uses MDCS Stream protocol: reads module's requests from stdout, answers requests on stdin using
+canned responses from the test case.
 """
 
+import subprocess
 import json, threading
 
 class IPCEvent:
@@ -24,7 +25,9 @@ class IPC:
     """
 
     def start(self): self._thread.start()
+
     def stop(self): self._stop.set()
+
     def join(self, timeout): self._thread.join(timeout=timeout)
 
     def _readline(self):
@@ -56,7 +59,7 @@ class IPC:
         
         return int(text[1:-1])
 
-    def _read_message(self):
+    def _read_msg(self) -> IPCEvent:
         status = self._readline().decode("utf-8")
         parts = status.split(" ", 2)
 
@@ -83,7 +86,7 @@ class IPC:
 
         return IPCEvent(msg_id, service, action, headers, payload)
 
-    def _write_response(self, event, response):
+    def _write_response(self, event: IPCEvent, response: any):
 
         if isinstance(response, dict):
             payload = response.get("payload", "")
@@ -113,7 +116,7 @@ class IPC:
         self.process.stdin.write(out)
         self.process.stdin.flush()
 
-    def _find_response(self, event):
+    def _find_response(self, event: IPCEvent) -> any:
         # A list is consumed one item per occurrence of the same action.
 
         if event.action not in self.responses:
@@ -137,7 +140,7 @@ class IPC:
 
         try:
             while not self._stop.is_set():
-                event = self._read_message()
+                event = self._read_msg()
                 self.events.append(event)
                 self._write_response(event, self._find_response(event))
 
@@ -153,11 +156,12 @@ class IPC:
             try: self.process.stdin.close()
             except OSError: pass
 
-    def __init__(self, process, log_file, responses):
+    def __init__(self, process: subprocess.Popen, responses):
         self.process = process
-        self.log_file = log_file
         self.responses = responses
+
         self.events = []
         self.protocol_errors = []
+
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._read_loop, daemon=True)

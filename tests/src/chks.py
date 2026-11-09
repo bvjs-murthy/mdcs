@@ -4,7 +4,7 @@ HTTP server checks, file assertions and IPC assertions.
 """
 
 import json, os
-from tools.tests.tester.utils import render, read_text
+from utils import render, read_text
 from http import http_request
 
 def deep_equal(actual, expected, path="$"):

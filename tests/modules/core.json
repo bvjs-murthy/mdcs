@@ -1,5 +1,5 @@
 {
-    "test_name": "MDCS Core + Server \u2014 black-box integration suite",
+    "test_name": "MDCS Core + Server \u2014 suite",
     "application": {
         "path": "./apps/core/target/classes",
         "command": [

@@ -1,55 +1,15 @@
-"""
-Small stdlib replacements and shared helpers:
-command splitting, temp dirs, file IO, placeholder rendering, running commands.
-"""
+import os, socket, subprocess, time, sys, shlex
 
-import os, socket, subprocess, time
+def log(level: str, msg: str):
+    cur = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    ms = int((time.time() % 1) * 1000)
+    tstamp = f"{cur}.{ms:03d}"
 
-def split_command(text):
-    args, cur, quote, has_token, i = [], [], None, False, 0
+    entry = f"{tstamp} | {level}: {msg}"
 
-    while i < len(text):
-        c = text[i]
+    sys.stderr.write(entry)
 
-        if quote:
-
-            if c == quote: quote = None
-
-            elif c == "\\" and quote == '"' and i + 1 < len(text) and text[i + 1] in '"\\':
-                i += 1
-                cur.append(text[i])
-
-            else: cur.append(c)
-
-        elif c in "'\"": quote, has_token = c, True
-
-        elif c == "\\" and i + 1 < len(text):
-            i += 1
-            cur.append(text[i])
-            has_token = True
-
-        elif c in " \t\r\n":
-
-            if has_token or cur:
-                args.append("".join(cur))
-                cur, has_token = [], False
-
-        else:
-            cur.append(c)
-            has_token = True
-
-        i += 1
-
-    if quote: raise ValueError(f"Unterminated quote in command: {text!r}")
-
-    if has_token or cur: args.append("".join(cur))
-
-    return args
-
-def render(value, root, case_dir, app_data):
-    """
-    Recursively expand {root} {case_dir} {app_data} {sep} in JSON values.
-    """
+def render(value: any, root: str, case_dir: str, app_data: str) -> any:
 
     if isinstance(value, str):
         return (
@@ -67,15 +27,15 @@ def render(value, root, case_dir, app_data):
     
     return value
 
-def command_from(spec):
+def command_from(spec: any) -> any:
 
-    if isinstance(spec, str): return split_command(spec)  # no shell=True on purpose
+    if isinstance(spec, str): return shlex.split(spec)
     
     if isinstance(spec, list): return [str(x) for x in spec]
 
     raise ValueError(f"Invalid command: {spec!r}")
 
-def run_command(spec, root, case_dir, app_data, check=True):
+def run_command(spec: dict, root: str, case_dir: str, app_data: str, check=True):
     cmd = command_from(render(spec["command"], root, case_dir, app_data))
     cwd = render(spec.get("cwd", root), root, case_dir, app_data)
     env = os.environ.copy()
@@ -90,7 +50,7 @@ def run_command(spec, root, case_dir, app_data, check=True):
     if check and result.returncode != 0:
 
         raise RuntimeError(
-            f"prerequisite command failed ({result.returncode}): {' '.join(cmd)}\n"
+            f"Prerequisite command failed ({result.returncode}): {' '.join(cmd)}\n"
             f"{result.stdout}\n{result.stderr}"
         )
     

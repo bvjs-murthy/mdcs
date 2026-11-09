@@ -1,11 +1,10 @@
 import json, os, subprocess, time
-from tools.tests.tester.chks import evaluate_assertions, http_check
-from tools.tests.tester.cli import ok, fail, warn, info, dim
-from tools.tests.tester.ipc import IPC
+from chks import evaluate_assertions, http_check
+from ipc import IPC
 
-from tools.tests.tester.utils import (
+from utils import (
     command_from, make_temp_dir, remove_tree, render, run_command,
-    wait_for_port, write_text,
+    wait_for_port, write_text, log,
 )
 
 STATUS = {
@@ -45,7 +44,7 @@ class Suite:
         r = self.root
 
         for pre in self.config.get("prerequisites", []):
-            print(info(f"\t- prerequisite: {pre.get('name', 'prerequisite')}"))
+            log("Info", f"Running prerequisite: {pre.get('name', 'unknown prerequisite')}\n")
 
             if pre.get("command"):
 
@@ -108,8 +107,8 @@ class Suite:
         expected_exit = expected.get("exit_code")
         timeout = float(case.get("timeout", self.config.get("timeout", 20)))
 
-        os.makedirs(self.result_dir, exist_ok=True)
-        log_path = os.path.join(self.result_dir, f"{name}.log")
+        os.makedirs(self.res_dir, exist_ok=True)
+        log_path = os.path.join(self.res_dir, f"{name}.log")
 
         errors = []
         process = None
@@ -152,45 +151,45 @@ class Suite:
                     app_data
                 )
 
-                with open(log_path, "w", encoding="utf-8") as log_file:
-                    process = subprocess.Popen(
-                        command, cwd=cwd, env=env,
-                        stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        bufsize=0,
+                process = subprocess.Popen(
+                    command, cwd=cwd, env=env,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    bufsize=0,
+                )
+
+                inp = case.get("input", {})
+                responses = inp.get("responses", dict()) if isinstance(inp, dict) else dict()
+
+                ipc = IPC(process, responses)
+                ipc.start()
+
+                try: process.wait(timeout=timeout)
+
+                except subprocess.TimeoutExpired:
+                    errors.append(f"process exceeded timeout of {timeout:.2f}s")
+                    process.kill()
+                    process.wait(timeout=3)
+
+                ipc.stop()
+                ipc.join(1)
+
+                errors.extend(f"IPC: {x}" for x in ipc.protocol_errors)
+                actual_exit = process.returncode
+
+                if expected_exit is not None and actual_exit != int(expected_exit):
+                    errors.append(
+                        f"exit code: expected {expected_exit} "
+                        f"({STATUS.get(int(expected_exit), 'UNKNOWN')}), "
+                        f"got {actual_exit} ({STATUS.get(actual_exit, 'UNKNOWN')})"
                     )
 
-                    inp = case.get("input", {})
-                    responses = inp.get("responses", {}) if isinstance(inp, dict) else {}
+                errors.extend(evaluate_assertions(
+                    expected.get("assert", {}),
+                    self.root, case_dir, app_data, ipc.events)
+                )
 
-                    ipc = IPC(process, log_file, responses)
-                    ipc.start()
-
-                    try: process.wait(timeout=timeout)
-
-                    except subprocess.TimeoutExpired:
-                        errors.append(f"process exceeded timeout of {timeout:.2f}s")
-                        process.kill()
-                        process.wait(timeout=3)
-
-                    ipc.stop()
-                    ipc.join(1)
-
-                    errors.extend(f"IPC: {x}" for x in ipc.protocol_errors)
-                    actual_exit = process.returncode
-
-                    if expected_exit is not None and actual_exit != int(expected_exit):
-                        errors.append(
-                            f"exit code: expected {expected_exit} "
-                            f"({STATUS.get(int(expected_exit), 'UNKNOWN')}), "
-                            f"got {actual_exit} ({STATUS.get(actual_exit, 'UNKNOWN')})"
-                        )
-
-                    errors.extend(evaluate_assertions(
-                        expected.get("assert", {}),
-                        self.root, case_dir, app_data, ipc.events)
-                    )
             else:
                 write_text(
                     log_path,
@@ -231,10 +230,9 @@ class Suite:
         )
 
     def run(self):
-        suite_name = self.config.get("test_name", self.config.get("name", "MDCS Test Suite"))
+        suite = self.config.get("test_name", self.config.get("name", "Test Suite"))
 
-        print(f'\n{info(f"MDCS :: {suite_name}")}')
-        print(dim('-' * 72))
+        log("Info", f"Initializing {suite}")
 
         try:
             self.run_prereqs()
@@ -264,11 +262,11 @@ class Suite:
                     for error in result.errors: print("       " + fail("↳ " + error))
 
                 if self.verbose:
-                    print("       " + dim("log: " + os.path.join(self.result_dir, f"{case['name']}.log")))
+                    print("       " + dim("log: " + os.path.join(self.res_dir, f"{case['name']}.log")))
         
         finally: self.stop_prereqs()
 
-        return self._report(suite_name)
+        return self._report(suite)
 
     def _report(self, suite_name):
         passed = sum(1 for r in self.results if r.passed)
@@ -282,8 +280,8 @@ class Suite:
             + f"   Time: {total_time:.3f}s"
         )
 
-        summary_path = os.path.join(self.result_dir, "summary.json")
-        os.makedirs(self.result_dir, exist_ok=True)
+        summary_path = os.path.join(self.res_dir, "summary.json")
+        os.makedirs(self.res_dir, exist_ok=True)
         
         write_text(summary_path, json.dumps({
             "suite": suite_name,
@@ -310,14 +308,14 @@ class Suite:
 
         return 0 if failed == 0 else 1
 
-    def __init__(self, config, conf_path, verbose=False):
+    def __init__(self, config: dict, conf_path: str):
         self.config = config
         self.conf_path = conf_path
-        
-        # All paths resolve from the directory where the runner is invoked.
+
+        # Commands for all the cases and prereqs will be executed wrt cwd.
         self.root = os.path.realpath(os.getcwd())
         self.result_dir = os.path.join(self.root, "results", str(time.time()))
-        self.verbose = verbose
+
         self.results = []
         self.ser_proc = None
         self.ser_log_han = None
